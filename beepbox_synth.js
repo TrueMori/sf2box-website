@@ -120,6 +120,33 @@ var beepbox = (function (exports) {
             });
         });
     }
+    function startLoadingSoundfont(url, chipWaveIndex) {
+        return __awaiter$1(this, void 0, void 0, function* () {
+            if (OFFLINE) {
+                if (url.slice(0, 5) === "file:") {
+                    const dirname = yield getDirname();
+                    const joined = yield pathJoin(dirname, url.slice(5));
+                    url = joined;
+                }
+            }
+            fetch(url).then((response) => {
+                if (!response.ok) {
+                    sampleLoadingState.statusTable[chipWaveIndex] = 2;
+                    return Promise.reject(new Error("Couldn't load soundfont"));
+                }
+                return response.arrayBuffer();
+            }).then(() => {
+                sampleLoadingState.samplesLoaded++;
+                sampleLoadingState.statusTable[chipWaveIndex] = 1;
+                sampleLoadEvents.dispatchEvent(new SampleLoadedEvent(sampleLoadingState.totalSamples, sampleLoadingState.samplesLoaded, sampleLoadingState.samplesFailed));
+            }).catch((error) => {
+                sampleLoadingState.statusTable[chipWaveIndex] = 2;
+                sampleLoadingState.samplesFailed++;
+                sampleLoadEvents.dispatchEvent(new SampleLoadedEvent(sampleLoadingState.totalSamples, sampleLoadingState.samplesLoaded, sampleLoadingState.samplesFailed));
+                console.log("Failed to load " + url + ":\n" + error);
+            });
+        });
+    }
     function loadScript(url) {
         const result = new Promise((resolve, reject) => {
             if (window["HTML_OFFLINE"] === true) {
@@ -2170,15 +2197,6 @@ var beepbox = (function (exports) {
             step((generator = generator.apply(thisArg, _arguments || [])).next());
         });
     };
-    const OPS = {
-        instrument: 41,
-        keyRange: 43,
-        coarseTune: 51,
-        fineTune: 52,
-        sampleID: 53,
-        sampleMode: 54,
-        overridingRootKey: 58,
-    };
     var sampleMode;
     (function (sampleMode) {
         sampleMode[sampleMode["noLoop"] = 0] = "noLoop";
@@ -2186,6 +2204,90 @@ var beepbox = (function (exports) {
         sampleMode[sampleMode["unused"] = 2] = "unused";
         sampleMode[sampleMode["loopUntilEnd"] = 3] = "loopUntilEnd";
     })(sampleMode || (sampleMode = {}));
+    var GeneratorCombination;
+    (function (GeneratorCombination) {
+        GeneratorCombination[GeneratorCombination["additive"] = 0] = "additive";
+        GeneratorCombination[GeneratorCombination["range"] = 1] = "range";
+        GeneratorCombination[GeneratorCombination["substitution"] = 2] = "substitution";
+        GeneratorCombination[GeneratorCombination["sampleOffset"] = 3] = "sampleOffset";
+        GeneratorCombination[GeneratorCombination["sampleMode"] = 4] = "sampleMode";
+        GeneratorCombination[GeneratorCombination["sampleRootKey"] = 5] = "sampleRootKey";
+        GeneratorCombination[GeneratorCombination["exclusiveClass"] = 6] = "exclusiveClass";
+        GeneratorCombination[GeneratorCombination["index"] = 7] = "index";
+        GeneratorCombination[GeneratorCombination["reserved"] = 8] = "reserved";
+        GeneratorCombination[GeneratorCombination["link"] = 9] = "link";
+        GeneratorCombination[GeneratorCombination["override"] = 10] = "override";
+        GeneratorCombination[GeneratorCombination["none"] = 11] = "none";
+    })(GeneratorCombination || (GeneratorCombination = {}));
+    var ParseType;
+    (function (ParseType) {
+        ParseType[ParseType["Uint16"] = 0] = "Uint16";
+        ParseType[ParseType["Int16"] = 1] = "Int16";
+        ParseType[ParseType["Range"] = 2] = "Range";
+    })(ParseType || (ParseType = {}));
+    const GENERATORS = {
+        startAddrsOffset: { op: 0, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.sampleOffset, defaultValue: 0, parseType: ParseType.Int16 },
+        endAddrsOffset: { op: 1, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.sampleOffset, defaultValue: 0, parseType: ParseType.Int16 },
+        startloopAddrsOffset: { op: 2, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.sampleOffset, defaultValue: 0, parseType: ParseType.Int16 },
+        endloopAddrsOffset: { op: 3, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.sampleOffset, defaultValue: 0, parseType: ParseType.Int16 },
+        startAddrsCoarseOffset: { op: 4, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.sampleOffset, defaultValue: 0, parseType: ParseType.Int16 },
+        modLfoToPitch: { op: 5, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        vibLfoToPitch: { op: 6, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        modEnvToPitch: { op: 7, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        initialFilterFc: { op: 8, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: 13500, parseType: ParseType.Int16 },
+        initialFilterQ: { op: 9, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        modLfoToFilterFc: { op: 10, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        modEnvToFilterFc: { op: 11, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        endAddrsCoarseOffset: { op: 12, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.sampleOffset, defaultValue: 0, parseType: ParseType.Int16 },
+        modLfoToVolume: { op: 13, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        unused1: { op: 14, presetAllowed: false, instrumentAllowed: false, type: GeneratorCombination.none, defaultValue: 0, parseType: ParseType.Uint16 },
+        chorusEffectsSend: { op: 15, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        reverbEffectsSend: { op: 16, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        pan: { op: 17, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        unused2: { op: 18, presetAllowed: false, instrumentAllowed: false, type: GeneratorCombination.none, defaultValue: 0, parseType: ParseType.Uint16 },
+        unused3: { op: 19, presetAllowed: false, instrumentAllowed: false, type: GeneratorCombination.none, defaultValue: 0, parseType: ParseType.Uint16 },
+        unused4: { op: 20, presetAllowed: false, instrumentAllowed: false, type: GeneratorCombination.none, defaultValue: 0, parseType: ParseType.Uint16 },
+        delayModLFO: { op: 21, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -12000, parseType: ParseType.Int16 },
+        freqModLFO: { op: 22, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: 0, parseType: ParseType.Int16 },
+        delayVibLFO: { op: 23, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -12000, parseType: ParseType.Int16 },
+        freqVibLFO: { op: 24, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: 0, parseType: ParseType.Int16 },
+        delayModEnv: { op: 25, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -12000, parseType: ParseType.Int16 },
+        attackModEnv: { op: 26, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -12000, parseType: ParseType.Int16 },
+        holdModEnv: { op: 27, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -12000, parseType: ParseType.Int16 },
+        decayModEnv: { op: 28, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -12000, parseType: ParseType.Int16 },
+        sustainModEnv: { op: 29, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: 0, parseType: ParseType.Uint16 },
+        releaseModEnv: { op: 30, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -12000, parseType: ParseType.Int16 },
+        keynumToModEnvHold: { op: 31, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        keynumToModEnvDecay: { op: 32, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        delayVolEnv: { op: 33, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -12000, parseType: ParseType.Int16 },
+        attackVolEnv: { op: 34, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -12000, parseType: ParseType.Int16 },
+        holdVolEnv: { op: 35, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -12000, parseType: ParseType.Int16 },
+        decayVolEnv: { op: 36, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -12000, parseType: ParseType.Int16 },
+        sustainVolEnv: { op: 37, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: 0, parseType: ParseType.Int16 },
+        releaseVolEnv: { op: 38, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -12000, parseType: ParseType.Int16 },
+        keynumToVolEnvHold: { op: 39, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        keynumToVolEnvDecay: { op: 40, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        instrument: { op: 41, presetAllowed: true, instrumentAllowed: false, type: GeneratorCombination.link, defaultValue: 0, parseType: ParseType.Uint16 },
+        reserved1: { op: 42, presetAllowed: false, instrumentAllowed: false, type: GeneratorCombination.none, defaultValue: 0, parseType: ParseType.Uint16 },
+        keyRange: { op: 43, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.range, defaultValue: 32512, parseType: ParseType.Range },
+        velRange: { op: 44, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.range, defaultValue: 32512, parseType: ParseType.Range },
+        startloopAddrsCoarseOffset: { op: 45, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.sampleOffset, defaultValue: 0, parseType: ParseType.Int16 },
+        keynum: { op: 46, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -1, parseType: ParseType.Int16 },
+        velocity: { op: 47, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: -1, parseType: ParseType.Int16 },
+        initialAttenuation: { op: 48, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        reserved2: { op: 49, presetAllowed: false, instrumentAllowed: false, type: GeneratorCombination.none, defaultValue: 0, parseType: ParseType.Uint16 },
+        endloopAddrsCoarseOffset: { op: 50, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.sampleOffset, defaultValue: 0, parseType: ParseType.Int16 },
+        coarseTune: { op: 51, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        fineTune: { op: 52, presetAllowed: true, instrumentAllowed: true, type: GeneratorCombination.additive, defaultValue: 0, parseType: ParseType.Int16 },
+        sampleID: { op: 53, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.link, defaultValue: 0, parseType: ParseType.Uint16 },
+        sampleModes: { op: 54, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: 0, parseType: ParseType.Uint16 },
+        reserved3: { op: 55, presetAllowed: false, instrumentAllowed: false, type: GeneratorCombination.none, defaultValue: 0, parseType: ParseType.Uint16 },
+        scaleTuning: { op: 56, presetAllowed: true, instrumentAllowed: false, type: GeneratorCombination.override, defaultValue: 100, parseType: ParseType.Int16 },
+        exclusiveClass: { op: 57, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: 0, parseType: ParseType.Uint16 },
+        overridingRootKey: { op: 58, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: 65535, parseType: ParseType.Uint16 },
+        unused5: { op: 59, presetAllowed: false, instrumentAllowed: false, type: GeneratorCombination.none, defaultValue: 0, parseType: ParseType.Uint16 },
+        endOper: { op: 60, presetAllowed: false, instrumentAllowed: false, type: GeneratorCombination.none, defaultValue: 0, parseType: ParseType.Uint16 },
+    };
     class Soundfont {
         static placeholderSoundfont() {
             let presets = [{
@@ -2200,13 +2302,11 @@ var beepbox = (function (exports) {
         static loadSoundfont(url, sfIndex, doc) {
             return __awaiter(this, void 0, void 0, function* () {
                 return fetch(url).then((response) => {
-                    console.log("Fetching " + url + "...");
                     if (!response.ok) {
                         return Promise.reject(new Error("Couldn't load sf2."));
                     }
                     return response.arrayBuffer();
                 }).then((arrayBuffer) => {
-                    console.log("Loading " + url + ". Size of data: " + arrayBuffer.byteLength + " bytes.");
                     let name = "";
                     let presets = [];
                     let buffer = new Uint8Array(arrayBuffer);
@@ -2288,9 +2388,22 @@ var beepbox = (function (exports) {
                                 currRecord = 0;
                                 while (currRecord < recordCount) {
                                     const recLocation = (currRecord * 4) + postByte;
+                                    const op = view.getUint16(recLocation, true);
+                                    const genDef = this.getDefFromGenerator({ op: op, amt: 0 });
+                                    let amt;
+                                    if (!genDef) {
+                                        currRecord++;
+                                        continue;
+                                    }
+                                    if (genDef.parseType == ParseType.Int16) {
+                                        amt = view.getInt16(recLocation + 2, true);
+                                    }
+                                    else {
+                                        amt = view.getUint16(recLocation + 2, true);
+                                    }
                                     pgen.push({
-                                        op: view.getUint16(recLocation, true),
-                                        amt: view.getUint16(recLocation + 2, true),
+                                        op: op,
+                                        amt: amt,
                                     });
                                     currRecord++;
                                 }
@@ -2301,9 +2414,22 @@ var beepbox = (function (exports) {
                                 currRecord = 0;
                                 while (currRecord < recordCount) {
                                     const recLocation = (currRecord * 4) + postByte;
+                                    const op = view.getUint16(recLocation, true);
+                                    const genDef = this.getDefFromGenerator({ op: op, amt: 0 });
+                                    let amt;
+                                    if (!genDef) {
+                                        currRecord++;
+                                        continue;
+                                    }
+                                    if (genDef.parseType == ParseType.Int16) {
+                                        amt = view.getInt16(recLocation + 2, true);
+                                    }
+                                    else {
+                                        amt = view.getUint16(recLocation + 2, true);
+                                    }
                                     igen.push({
-                                        op: view.getUint16(recLocation, true),
-                                        amt: view.getUint16(recLocation + 2, true),
+                                        op: op,
+                                        amt: amt,
                                     });
                                     currRecord++;
                                 }
@@ -2387,16 +2513,10 @@ var beepbox = (function (exports) {
                         const instrumentZones = [];
                         for (let i = bagRange[0] + global; i < bagRange[1]; i++) {
                             const zoneGens = this.getInstrumentBagGenerators(ibag, igen, i);
-                            console.log({
-                                isGlobal: global,
-                                zoneGens: zoneGens,
-                                ibag: ibag,
-                                igen: igen,
-                            });
                             const mnPitch = this.getKeyRange(zoneGens)[0];
                             const mxPitch = this.getKeyRange(zoneGens)[1];
-                            const sampleIndex = this.getGensOfType(zoneGens, OPS.sampleID)[0];
-                            const loopType = this.getGensOfType(zoneGens, OPS.sampleMode);
+                            const sampleIndex = this.getGensOfType(zoneGens, GENERATORS.sampleID.op)[0];
+                            const loopType = this.getGensOfType(zoneGens, GENERATORS.sampleModes.op);
                             instrumentZones.push({
                                 minPitch: mnPitch,
                                 maxPitch: mxPitch,
@@ -2426,7 +2546,7 @@ var beepbox = (function (exports) {
                             const zoneGens = this.getPresetBagGenerators(pbag, pgen, i);
                             const mnPitch = this.getKeyRange(zoneGens)[0];
                             const mxPitch = this.getKeyRange(zoneGens)[1];
-                            const instIndex = this.getGensOfType(zoneGens, OPS.instrument)[0];
+                            const instIndex = this.getGensOfType(zoneGens, GENERATORS.instrument.op)[0];
                             const instrument = instruments[instIndex];
                             presetZones.push({
                                 minPitch: mnPitch,
@@ -2462,7 +2582,7 @@ var beepbox = (function (exports) {
             for (let i = start; i < end; i++) {
                 generators.push(gens[i]);
             }
-            if (!generators.find((gen) => gen.op == OPS.sampleID)) {
+            if (!generators.find((gen) => gen.op == GENERATORS.sampleID.op)) {
                 generators.push({ op: 0, amt: 0 });
                 return generators;
             }
@@ -2477,7 +2597,7 @@ var beepbox = (function (exports) {
             for (let i = start; i < end; i++) {
                 generators.push(gens[i]);
             }
-            if (!generators.find((gen) => gen.op == OPS.instrument)) {
+            if (!generators.find((gen) => gen.op == GENERATORS.instrument.op)) {
                 generators.push({ op: 0, amt: 0 });
                 return generators;
             }
@@ -2504,7 +2624,7 @@ var beepbox = (function (exports) {
             return genResult;
         }
         static getKeyRange(instGens) {
-            let keyRangeGen = this.getGensOfType(instGens, OPS.keyRange);
+            let keyRangeGen = this.getGensOfType(instGens, GENERATORS.keyRange.op);
             if (keyRangeGen.length > 0) {
                 let gen = keyRangeGen[0];
                 let high = (gen >>> 8) & 0xFF;
@@ -2518,11 +2638,30 @@ var beepbox = (function (exports) {
         static getGensOfType(instGens, op) {
             let result = [];
             for (const g of instGens) {
+                if (!g)
+                    continue;
                 if (g.op == op) {
                     result.push(g.amt);
                 }
             }
             return result;
+        }
+        static getGenDef(gen) {
+            for (const presetGen in GENERATORS) {
+                if (GENERATORS[presetGen].op == gen.op) {
+                    return GENERATORS[presetGen];
+                }
+            }
+            return GENERATORS.unused;
+        }
+        static getRangeTypeValues(amt) {
+            let high = (amt >>> 8) & 0xFF;
+            let low = amt & 0xFF;
+            return [low, high];
+        }
+        static setRangeTypeValues(gen, range) {
+            let encoded = ((range[1] & 0xFF) << 8) | (range[0] & 0xFF);
+            gen.amt = encoded;
         }
         static getAllPresetSamples(soundfontIndex, presetIndex) {
             const waves = [];
@@ -2534,56 +2673,102 @@ var beepbox = (function (exports) {
             }
             return waves;
         }
-        static getSamplesFromMidiPitch(soundfontIndex, presetIndex, pitch) {
-            const waves = [];
-            const sf = Soundfont.loadedSoundfonts[soundfontIndex];
-            const preset = sf.presets[presetIndex];
-            for (let pZone of preset.presetZones) {
-                for (let iZone of pZone.instrument.instrumentZones) {
-                    if (pitch >= iZone.minPitch && pitch <= iZone.maxPitch) {
-                        waves.push(iZone.sampleIndex);
-                    }
-                }
+        static resolveGlobalAndZoneGen(globalGen, zoneGen) {
+            const genDef = this.getGenDef(zoneGen);
+            if (genDef.type == GeneratorCombination.range && globalGen) {
+                const globalRange = this.getRangeTypeValues(globalGen.amt);
+                const zoneRange = this.getRangeTypeValues(zoneGen.amt);
+                const newRange = [Math.max(globalRange[0], zoneRange[0]), Math.min(globalRange[1], zoneRange[1])];
+                const returnGen = { op: globalGen.op, amt: 0 };
+                this.setRangeTypeValues(returnGen, newRange);
+                return returnGen;
             }
-            return waves;
+            else {
+                return zoneGen;
+            }
         }
-        static getGeneratorsFromMidiPitch(soundfontIndex, presetIndex, pitch) {
+        static resolvePresetAndInstGen(presetGen, instGen) {
+            const genDef = this.getGenDef(presetGen);
+            if (genDef.type == GeneratorCombination.range) {
+                const presetRange = this.getRangeTypeValues(presetGen.amt);
+                const instRange = this.getRangeTypeValues(instGen.amt);
+                const newRange = [Math.max(presetRange[0], instRange[0]), Math.min(presetRange[1], instRange[1])];
+                const returnGen = { op: presetGen.op, amt: 0 };
+                this.setRangeTypeValues(returnGen, newRange);
+                return returnGen;
+            }
+            else if (genDef.type == GeneratorCombination.additive) {
+                return { op: presetGen.op, amt: presetGen.amt + instGen.amt };
+            }
+            else {
+                return instGen;
+            }
+        }
+        static getGeneratorsOfLevelsFromMidiPitch(soundfontIndex, presetIndex, pitch) {
             const generators = [];
             const sf = Soundfont.loadedSoundfonts[soundfontIndex];
             const preset = sf.presets[presetIndex];
-            preset.globalGens.forEach((gen) => generators.push(gen));
-            for (let pZone of preset.presetZones) {
-                for (let iZone of pZone.instrument.instrumentZones) {
-                    if (pitch >= iZone.minPitch && pitch <= iZone.maxPitch) {
-                        pZone.gens.forEach((gen) => generators.push(gen));
-                        pZone.instrument.globalGens.forEach((gen) => generators.push(gen));
-                        iZone.gens.forEach((gen) => generators.push(gen));
-                    }
+            const globalPresetGens = new Map();
+            preset.globalGens.forEach((gen) => globalPresetGens.set(gen.op, gen.amt));
+            for (const pZone of preset.presetZones) {
+                if (pitch < Math.max(pZone.minPitch, preset.minPitch) || pitch > Math.min(pZone.maxPitch, preset.maxPitch))
+                    continue;
+                const presetZoneGens = new Map(globalPresetGens);
+                const presetGens = [];
+                pZone.gens.forEach((gen) => {
+                    let globalGen = globalPresetGens.has(gen.op) ? { op: gen.op, amt: globalPresetGens.get(gen.op) } : null;
+                    const resolved = this.resolveGlobalAndZoneGen(globalGen, gen);
+                    presetZoneGens.set(resolved.op, resolved.amt);
+                });
+                presetZoneGens.forEach((amt, op) => presetGens.push({ op: op, amt: amt }));
+                const globalInstGens = new Map();
+                const instGens = [];
+                const instrument = pZone.instrument;
+                instrument.globalGens.forEach((gen) => globalInstGens.set(gen.op, gen.amt));
+                for (const iZone of pZone.instrument.instrumentZones) {
+                    if (pitch < Math.max(iZone.minPitch, instrument.minPitch) || pitch > Math.min(iZone.maxPitch, instrument.maxPitch))
+                        continue;
+                    const iGens = [];
+                    const instZoneGens = new Map(globalInstGens);
+                    iZone.gens.forEach((gen) => {
+                        let globalGen = globalInstGens.has(gen.op) ? { op: gen.op, amt: globalInstGens.get(gen.op) } : null;
+                        const resolved = this.resolveGlobalAndZoneGen(globalGen, gen);
+                        instZoneGens.set(resolved.op, resolved.amt);
+                    });
+                    instZoneGens.forEach((amt, op) => iGens.push({ op: op, amt: amt }));
+                    presetGens.forEach((gen) => {
+                        const genDef = this.getDefFromGenerator(gen);
+                        if (!(genDef === null || genDef === void 0 ? void 0 : genDef.instrumentAllowed))
+                            return;
+                        const instGenIndex = iGens.findIndex((g) => gen.op == g.op);
+                        if (instGenIndex > -1) {
+                            const resolved = this.resolvePresetAndInstGen(gen, iGens[instGenIndex]);
+                            iGens[instGenIndex] = resolved;
+                        }
+                        else {
+                            iGens.push(gen);
+                        }
+                    });
+                    instGens.push({ gens: iGens });
                 }
+                if (instGens.length > 0)
+                    generators.push({ gens: presetGens, instGenerators: instGens });
             }
             return generators;
         }
-        static getGeneratorsOfLevelFromMidiPitch(soundfontIndex, presetIndex, pitch, level) {
-            const generators = [];
-            const sf = Soundfont.loadedSoundfonts[soundfontIndex];
-            const preset = sf.presets[presetIndex];
-            if (level == 0) {
-                preset.globalGens.forEach((gen) => generators.push(gen));
+        static getDefFromGenerator(gen) {
+            for (const gDef in GENERATORS) {
+                if (GENERATORS[gDef].op == gen.op)
+                    return GENERATORS[gDef];
             }
-            for (let pZone of preset.presetZones) {
-                if (pitch >= pZone.minPitch && pitch <= pZone.maxPitch && level == 1) {
-                    pZone.gens.forEach((gen) => generators.push(gen));
-                }
-                if (pitch >= pZone.minPitch && pitch <= pZone.maxPitch && level == 2) {
-                    pZone.instrument.globalGens.forEach((gen) => generators.push(gen));
-                }
-                for (let iZone of pZone.instrument.instrumentZones) {
-                    if (pitch >= iZone.minPitch && pitch <= iZone.maxPitch && level == 3) {
-                        iZone.gens.forEach((gen) => generators.push(gen));
-                    }
-                }
-            }
-            return generators;
+            return null;
+        }
+        static getGenAmtFromOp(genList, op) {
+            var _a, _b;
+            const gens = genList.gens;
+            const foundGen = gens.find(gen => gen.op === op);
+            const genDef = Object.values(GENERATORS).find(def => def.op === op);
+            return (_b = (_a = foundGen === null || foundGen === void 0 ? void 0 : foundGen.amt) !== null && _a !== void 0 ? _a : genDef === null || genDef === void 0 ? void 0 : genDef.defaultValue) !== null && _b !== void 0 ? _b : null;
         }
         constructor(name, presets, chipWaves, rawChipWaves, rawRawChipWaves, sampleInfo, url, success) {
             this.name = name;
@@ -2596,11 +2781,7 @@ var beepbox = (function (exports) {
             this.success = true;
         }
     }
-    Soundfont.soundfontURLS = [
-        "https://file.garden/ZxBw28OpLwxBlXVc/Bluegrass_Banjo.sf2",
-        "https://file.garden/ZxBw28OpLwxBlXVc/SRX_Acoustic_Bass.sf2",
-        "https://dl.dropboxusercontent.com/scl/fi/5dgonx0uhlasjwxlkgy00/CTinstruments.sf2?rlkey=4fhyvithjjxjyliy7lrilmrym&st=450mbyf8&dl=0",
-    ];
+    Soundfont.soundfontURLS = [];
     Soundfont.loadedSoundfonts = [];
     function centerWave(wave) {
         let sum = 0.0;
@@ -3898,6 +4079,8 @@ var beepbox = (function (exports) {
                     break;
                 case 12:
                     this.chord = Config.chords.dictionary["simultaneous"].index;
+                    this.soundfont = 0;
+                    this.soundfontPreset = 0;
                     break;
                 default:
                     throw new Error("Unrecognized instrument type: " + type);
@@ -5528,7 +5711,9 @@ var beepbox = (function (exports) {
                     }
                     else if (instrument.type == 10) ;
                     else if (instrument.type == 12) {
-                        buffer.push(75, base64IntToCharCode[instrument.soundfont], base64IntToCharCode[instrument.soundfontPreset]);
+                        const bigChar = Math.floor(instrument.soundfontPreset / 64);
+                        const littleChar = instrument.soundfontPreset % 64;
+                        buffer.push(75, base64IntToCharCode[instrument.soundfont], base64IntToCharCode[bigChar], base64IntToCharCode[littleChar]);
                     }
                     else {
                         throw new Error("Unknown instrument type.");
@@ -6517,7 +6702,9 @@ var beepbox = (function (exports) {
                         {
                             const instrument = this.channels[instrumentChannelIterator].instruments[instrumentIndexIterator];
                             instrument.soundfont = base64CharCodeToInt[compressed.charCodeAt(charIndex++)];
-                            instrument.soundfontPreset = base64CharCodeToInt[compressed.charCodeAt(charIndex++)];
+                            const bigChar = base64CharCodeToInt[compressed.charCodeAt(charIndex++)];
+                            const littleChar = base64CharCodeToInt[compressed.charCodeAt(charIndex++)];
+                            instrument.soundfontPreset = bigChar * 64 + littleChar;
                         }
                         break;
                     case 73:
@@ -7929,109 +8116,118 @@ var beepbox = (function (exports) {
                 }
             }
             if (parsedUrl != null) {
-                let urlWithNamedOptions = urlSliced;
-                const namedOptions = [];
-                if (customSampleRate !== 44100)
-                    namedOptions.push("s" + customSampleRate);
-                if (customRootKey !== 60)
-                    namedOptions.push("r" + customRootKey);
-                if (isCustomPercussive)
-                    namedOptions.push("p");
-                if (presetIsUsingAdvancedLoopControls) {
-                    if (presetChipWaveLoopStart != null)
-                        namedOptions.push("a" + presetChipWaveLoopStart);
-                    if (presetChipWaveLoopEnd != null)
-                        namedOptions.push("b" + presetChipWaveLoopEnd);
-                    if (presetChipWaveStartOffset != null)
-                        namedOptions.push("c" + presetChipWaveStartOffset);
-                    if (presetChipWaveLoopMode != null)
-                        namedOptions.push("d" + presetChipWaveLoopMode);
-                    if (presetChipWavePlayBackwards)
-                        namedOptions.push("e");
-                }
-                if (namedOptions.length > 0) {
-                    urlWithNamedOptions = "!" + namedOptions.join(",") + "!" + urlSliced;
-                }
-                customSampleUrls[customSampleUrlIndex] = urlWithNamedOptions;
-                let name;
-                if (OFFLINE) {
-                    name = decodeURIComponent(parsedUrl.replace(/^([^\/]*\/)+/, ""));
+                if (!urlSliced.includes("sf2")) {
+                    let urlWithNamedOptions = urlSliced;
+                    const namedOptions = [];
+                    if (customSampleRate !== 44100)
+                        namedOptions.push("s" + customSampleRate);
+                    if (customRootKey !== 60)
+                        namedOptions.push("r" + customRootKey);
+                    if (isCustomPercussive)
+                        namedOptions.push("p");
+                    if (presetIsUsingAdvancedLoopControls) {
+                        if (presetChipWaveLoopStart != null)
+                            namedOptions.push("a" + presetChipWaveLoopStart);
+                        if (presetChipWaveLoopEnd != null)
+                            namedOptions.push("b" + presetChipWaveLoopEnd);
+                        if (presetChipWaveStartOffset != null)
+                            namedOptions.push("c" + presetChipWaveStartOffset);
+                        if (presetChipWaveLoopMode != null)
+                            namedOptions.push("d" + presetChipWaveLoopMode);
+                        if (presetChipWavePlayBackwards)
+                            namedOptions.push("e");
+                    }
+                    if (namedOptions.length > 0) {
+                        urlWithNamedOptions = "!" + namedOptions.join(",") + "!" + urlSliced;
+                    }
+                    customSampleUrls[customSampleUrlIndex] = urlWithNamedOptions;
+                    let name;
+                    if (OFFLINE) {
+                        name = decodeURIComponent(parsedUrl.replace(/^([^\/]*\/)+/, ""));
+                    }
+                    else {
+                        name = decodeURIComponent(parsedUrl.pathname.replace(/^([^\/]*\/)+/, ""));
+                    }
+                    const expression = 1.0;
+                    Config.chipWaves[chipWaveIndex] = {
+                        name: name,
+                        expression: expression,
+                        isCustomSampled: true,
+                        isPercussion: isCustomPercussive,
+                        rootKey: customRootKey,
+                        sampleRate: customSampleRate,
+                        samples: defaultIntegratedSamples,
+                        index: chipWaveIndex,
+                    };
+                    Config.rawChipWaves[chipWaveIndex] = {
+                        name: name,
+                        expression: expression,
+                        isCustomSampled: true,
+                        isPercussion: isCustomPercussive,
+                        rootKey: customRootKey,
+                        sampleRate: customSampleRate,
+                        samples: defaultSamples,
+                        index: chipWaveIndex,
+                    };
+                    Config.rawRawChipWaves[chipWaveIndex] = {
+                        name: name,
+                        expression: expression,
+                        isCustomSampled: true,
+                        isPercussion: isCustomPercussive,
+                        rootKey: customRootKey,
+                        sampleRate: customSampleRate,
+                        samples: defaultSamples,
+                        index: chipWaveIndex,
+                    };
+                    const customSamplePresetSettings = {
+                        "type": "chip",
+                        "eqFilter": [],
+                        "effects": [],
+                        "transition": "normal",
+                        "fadeInSeconds": 0,
+                        "fadeOutTicks": -3,
+                        "chord": "harmony",
+                        "wave": name,
+                        "unison": "none",
+                        "envelopes": [],
+                    };
+                    if (presetIsUsingAdvancedLoopControls) {
+                        customSamplePresetSettings["isUsingAdvancedLoopControls"] = true;
+                        customSamplePresetSettings["chipWaveLoopStart"] = presetChipWaveLoopStart != null ? presetChipWaveLoopStart : 0;
+                        customSamplePresetSettings["chipWaveLoopEnd"] = presetChipWaveLoopEnd != null ? presetChipWaveLoopEnd : 2;
+                        customSamplePresetSettings["chipWaveLoopMode"] = presetChipWaveLoopMode != null ? presetChipWaveLoopMode : 0;
+                        customSamplePresetSettings["chipWavePlayBackwards"] = presetChipWavePlayBackwards;
+                        customSamplePresetSettings["chipWaveStartOffset"] = presetChipWaveStartOffset != null ? presetChipWaveStartOffset : 0;
+                    }
+                    const customSamplePreset = {
+                        index: 0,
+                        name: name,
+                        midiProgram: 80,
+                        settings: customSamplePresetSettings,
+                    };
+                    customSamplePresets.push(customSamplePreset);
+                    if (!Config.willReloadForCustomSamples) {
+                        const rawLoopOptions = {
+                            "isUsingAdvancedLoopControls": presetIsUsingAdvancedLoopControls,
+                            "chipWaveLoopStart": presetChipWaveLoopStart,
+                            "chipWaveLoopEnd": presetChipWaveLoopEnd,
+                            "chipWaveLoopMode": presetChipWaveLoopMode,
+                            "chipWavePlayBackwards": presetChipWavePlayBackwards,
+                            "chipWaveStartOffset": presetChipWaveStartOffset,
+                        };
+                        startLoadingSample(urlSliced, chipWaveIndex, customSamplePresetSettings, rawLoopOptions, customSampleRate);
+                    }
+                    sampleLoadingState.statusTable[chipWaveIndex] = 0;
+                    sampleLoadingState.urlTable[chipWaveIndex] = urlSliced;
+                    sampleLoadingState.totalSamples++;
                 }
                 else {
-                    name = decodeURIComponent(parsedUrl.pathname.replace(/^([^\/]*\/)+/, ""));
+                    Soundfont.soundfontURLS.push(url);
+                    startLoadingSoundfont(urlSliced, chipWaveIndex);
+                    sampleLoadingState.statusTable[chipWaveIndex] = 0;
+                    sampleLoadingState.urlTable[chipWaveIndex] = urlSliced;
+                    sampleLoadingState.totalSamples++;
                 }
-                const expression = 1.0;
-                Config.chipWaves[chipWaveIndex] = {
-                    name: name,
-                    expression: expression,
-                    isCustomSampled: true,
-                    isPercussion: isCustomPercussive,
-                    rootKey: customRootKey,
-                    sampleRate: customSampleRate,
-                    samples: defaultIntegratedSamples,
-                    index: chipWaveIndex,
-                };
-                Config.rawChipWaves[chipWaveIndex] = {
-                    name: name,
-                    expression: expression,
-                    isCustomSampled: true,
-                    isPercussion: isCustomPercussive,
-                    rootKey: customRootKey,
-                    sampleRate: customSampleRate,
-                    samples: defaultSamples,
-                    index: chipWaveIndex,
-                };
-                Config.rawRawChipWaves[chipWaveIndex] = {
-                    name: name,
-                    expression: expression,
-                    isCustomSampled: true,
-                    isPercussion: isCustomPercussive,
-                    rootKey: customRootKey,
-                    sampleRate: customSampleRate,
-                    samples: defaultSamples,
-                    index: chipWaveIndex,
-                };
-                const customSamplePresetSettings = {
-                    "type": "chip",
-                    "eqFilter": [],
-                    "effects": [],
-                    "transition": "normal",
-                    "fadeInSeconds": 0,
-                    "fadeOutTicks": -3,
-                    "chord": "harmony",
-                    "wave": name,
-                    "unison": "none",
-                    "envelopes": [],
-                };
-                if (presetIsUsingAdvancedLoopControls) {
-                    customSamplePresetSettings["isUsingAdvancedLoopControls"] = true;
-                    customSamplePresetSettings["chipWaveLoopStart"] = presetChipWaveLoopStart != null ? presetChipWaveLoopStart : 0;
-                    customSamplePresetSettings["chipWaveLoopEnd"] = presetChipWaveLoopEnd != null ? presetChipWaveLoopEnd : 2;
-                    customSamplePresetSettings["chipWaveLoopMode"] = presetChipWaveLoopMode != null ? presetChipWaveLoopMode : 0;
-                    customSamplePresetSettings["chipWavePlayBackwards"] = presetChipWavePlayBackwards;
-                    customSamplePresetSettings["chipWaveStartOffset"] = presetChipWaveStartOffset != null ? presetChipWaveStartOffset : 0;
-                }
-                const customSamplePreset = {
-                    index: 0,
-                    name: name,
-                    midiProgram: 80,
-                    settings: customSamplePresetSettings,
-                };
-                customSamplePresets.push(customSamplePreset);
-                if (!Config.willReloadForCustomSamples) {
-                    const rawLoopOptions = {
-                        "isUsingAdvancedLoopControls": presetIsUsingAdvancedLoopControls,
-                        "chipWaveLoopStart": presetChipWaveLoopStart,
-                        "chipWaveLoopEnd": presetChipWaveLoopEnd,
-                        "chipWaveLoopMode": presetChipWaveLoopMode,
-                        "chipWavePlayBackwards": presetChipWavePlayBackwards,
-                        "chipWaveStartOffset": presetChipWaveStartOffset,
-                    };
-                    startLoadingSample(urlSliced, chipWaveIndex, customSamplePresetSettings, rawLoopOptions, customSampleRate);
-                }
-                sampleLoadingState.statusTable[chipWaveIndex] = 0;
-                sampleLoadingState.urlTable[chipWaveIndex] = urlSliced;
-                sampleLoadingState.totalSamples++;
             }
             return true;
         }
@@ -9355,10 +9551,9 @@ var beepbox = (function (exports) {
             this.reverbShelfPrevInput1 = 0.0;
             this.reverbShelfPrevInput2 = 0.0;
             this.reverbShelfPrevInput3 = 0.0;
-            this.currSoundfontPitchSampleIndicies = new Map;
-            this.currSoundfontPitchSampleMode = new Map;
             this.soundfontIndex = 0;
             this.soundfontPresetIndex = 0;
+            this.soundfontGens = new Map();
             this.spectrumWave = new SpectrumWaveState();
             this.harmonicsWave = new HarmonicsWaveState();
             this.drumsetSpectrumWaves = [];
@@ -11495,8 +11690,7 @@ var beepbox = (function (exports) {
                     const instrumentState = channelState.instruments[instrumentIndex];
                     const toneList = instrumentState.activeTones;
                     if (instrumentState.type == 12) {
-                        instrumentState.currSoundfontPitchSampleIndicies.clear();
-                        instrumentState.currSoundfontPitchSampleMode.clear();
+                        instrumentState.soundfontGens.clear();
                     }
                     let toneCount = 0;
                     if ((note != null) && (!song.patternInstruments || (pattern.instruments.indexOf(instrumentIndex) != -1))) {
@@ -11729,7 +11923,6 @@ var beepbox = (function (exports) {
             return 1.0 / ((chordSize - 1) * 0.25 + 1.0);
         }
         computeTone(song, channelIndex, samplesPerTick, tone, released, shouldFadeOutFast) {
-            var _a, _b, _c, _d;
             const roundedSamplesPerTick = Math.ceil(samplesPerTick);
             const channel = song.channels[channelIndex];
             const channelState = this.channels[channelIndex];
@@ -11830,12 +12023,8 @@ var beepbox = (function (exports) {
             }
             else if (instrument.type == 12) {
                 baseExpression = Config.soundfontBaseExpression;
-                const sampleIndicies = Soundfont.getSamplesFromMidiPitch(instrument.soundfont, instrument.soundfontPreset, tone.pitches[0]);
-                const gInstrumentGens = Soundfont.getGeneratorsOfLevelFromMidiPitch(instrument.soundfont, instrument.soundfontPreset, tone.pitches[0], 2);
-                const lInstrumentGens = Soundfont.getGeneratorsOfLevelFromMidiPitch(instrument.soundfont, instrument.soundfontPreset, tone.pitches[0], 3);
-                const loopMode = (_d = (_b = (_a = lInstrumentGens.find((gen) => gen.op == OPS.sampleMode)) === null || _a === void 0 ? void 0 : _a.amt) !== null && _b !== void 0 ? _b : (_c = gInstrumentGens.find((gen) => gen.op == OPS.sampleMode)) === null || _c === void 0 ? void 0 : _c.amt) !== null && _d !== void 0 ? _d : 0;
-                instrumentState.currSoundfontPitchSampleIndicies.set(tone.pitches[0], sampleIndicies);
-                instrumentState.currSoundfontPitchSampleMode.set(tone.pitches[0], loopMode);
+                const gens = Soundfont.getGeneratorsOfLevelsFromMidiPitch(instrument.soundfont, instrument.soundfontPreset, tone.pitches[0]);
+                instrumentState.soundfontGens.set(tone.pitches[0], gens);
             }
             else {
                 throw new Error("Unknown instrument type in computeTone.");
@@ -13003,21 +13192,32 @@ var beepbox = (function (exports) {
             tone.initialNoteFilterInput2 = initialFilterInput2;
         }
         static soundfontSynth(synth, bufferIndex, roundedSamplesPerTick, tone, instrumentState) {
-            const sampleIndicies = instrumentState.currSoundfontPitchSampleIndicies.get(tone.pitches[0]);
-            const loopMode = instrumentState.currSoundfontPitchSampleMode.get(tone.pitches[0]);
+            var _a, _b, _c, _d, _e;
             const sf = Soundfont.loadedSoundfonts[instrumentState.soundfontIndex];
-            if (!sampleIndicies)
+            const gens = instrumentState.soundfontGens.get(tone.pitches[0]);
+            const currPresetGens = (gens.length > 0) ? gens[0] : null;
+            if (!currPresetGens)
                 return;
-            const currSample = sf.chipWaves[sampleIndicies[0]];
-            const sInfo = sf.sampleInfo[sampleIndicies[0]];
+            const currInstGens = (currPresetGens.instGenerators.length > 0) ? gens[0].instGenerators[0] : null;
+            if (!currInstGens)
+                return;
+            const sIndex = Soundfont.getGenAmtFromOp(currInstGens, GENERATORS.sampleID.op);
+            const loopMode = Soundfont.getGenAmtFromOp(currInstGens, GENERATORS.sampleModes.op);
+            const currSample = sf.chipWaves[sIndex];
+            const sInfo = sf.sampleInfo[sIndex];
             if (!currSample)
                 return;
+            let originalPitch = (_a = Soundfont.getGenAmtFromOp(currInstGens, GENERATORS.overridingRootKey.op)) !== null && _a !== void 0 ? _a : sInfo.originalPitch;
+            const pitchCorrectionCourse = (_b = Soundfont.getGenAmtFromOp(currInstGens, GENERATORS.coarseTune.op)) !== null && _b !== void 0 ? _b : 0;
+            const pitchCorrectionFine = (_c = Soundfont.getGenAmtFromOp(currInstGens, GENERATORS.fineTune.op)) !== null && _c !== void 0 ? _c : 0;
+            const scaleTuning = (_e = (_d = Soundfont.getGenAmtFromOp(currInstGens, GENERATORS.scaleTuning.op)) !== null && _d !== void 0 ? _d : Soundfont.getGenAmtFromOp(currPresetGens, GENERATORS.scaleTuning.op)) !== null && _e !== void 0 ? _e : 100;
+            originalPitch = (originalPitch == 65535) ? sInfo.originalPitch : originalPitch;
+            const rootFreq = Instrument.frequencyFromPitch(originalPitch - pitchCorrectionCourse - pitchCorrectionFine / 100.0 - sInfo.pCorrection / 100.0);
             const waveLength = currSample.length;
-            const rootFreq = Instrument.frequencyFromPitch(sInfo.originalPitch + sInfo.pCorrection);
             const loopStart = sInfo.loopStart;
             const loopEnd = sInfo.loopEnd;
             const loopRange = loopEnd - loopStart;
-            const canLoop = (loopMode == 1 || loopMode == 3) ? true : false;
+            const canLoop = (loopMode === 1 || loopMode === 3) && loopStart >= 0 && loopEnd > loopStart && loopEnd <= waveLength;
             const applyFilters = Synth.applyFilters;
             let expression = +tone.expression;
             const expressionDelta = +tone.expressionDelta;
@@ -13031,11 +13231,14 @@ var beepbox = (function (exports) {
                 const index = Math.floor(position);
                 const fraction = position - index;
                 const a = (_a = currSample[index]) !== null && _a !== void 0 ? _a : 0;
-                const b = (_b = currSample[index + 1]) !== null && _b !== void 0 ? _b : a;
+                let nextIndex = index + 1;
+                if (canLoop && nextIndex >= loopEnd)
+                    nextIndex = loopStart;
+                const b = (_b = currSample[nextIndex]) !== null && _b !== void 0 ? _b : a;
                 return a + (b - a) * fraction;
             };
             let phase = tone.phases[0] * waveLength;
-            let phaseDelta = tone.phaseDeltas[0] * sInfo.sampleRate / rootFreq;
+            let phaseDelta = tone.phaseDeltas[0] * sInfo.sampleRate / rootFreq * Math.pow(2, (tone.pitches[0] - originalPitch) * (scaleTuning - 100) / 1200);
             const phaseDeltaScale = +tone.phaseDeltaScales[0];
             const data = synth.tempMonoInstrumentSampleBuffer;
             const stopIndex = bufferIndex + roundedSamplesPerTick;
@@ -13055,7 +13258,7 @@ var beepbox = (function (exports) {
                 expression += expressionDelta;
             }
             tone.phases[0] = phase / waveLength;
-            tone.phaseDeltas[0] = phaseDelta * rootFreq / sInfo.sampleRate;
+            tone.phaseDeltas[0] = phaseDelta * rootFreq / sInfo.sampleRate / Math.pow(2, (tone.pitches[0] - originalPitch) * (scaleTuning - 100) / 1200);
             tone.expression = expression;
             synth.sanitizeFilters(filters);
             tone.initialNoteFilterInput1 = initialFilterInput1;
