@@ -1450,8 +1450,8 @@ var beepbox = (function (exports) {
             return (_a = EditorConfig.presetCategories[0].presets.dictionary) === null || _a === void 0 ? void 0 : _a[TypePresets === null || TypePresets === void 0 ? void 0 : TypePresets[instrument]];
         }
     }
-    EditorConfig.version = "1.0.0";
-    EditorConfig.versionDisplayName = "sf2box " + EditorConfig.version;
+    EditorConfig.version = "2.2.17";
+    EditorConfig.versionDisplayName = "UltraBox " + EditorConfig.version;
     EditorConfig.releaseNotesURL = "./patch_notes.html";
     EditorConfig.isOnMac = /^Mac/i.test(navigator.platform) || /Mac OS X/i.test(navigator.userAgent) || /^(iPhone|iPad|iPod)/i.test(navigator.platform) || /(iPhone|iPad|iPod)/i.test(navigator.userAgent);
     EditorConfig.ctrlSymbol = EditorConfig.isOnMac ? "⌘" : "Ctrl+";
@@ -2566,7 +2566,6 @@ var beepbox = (function (exports) {
                     }
                     const success = new Soundfont(name, presets, chipWaves, rawChipWaves, rawRawChipWaves, sampleInfo, url, true);
                     this.loadedSoundfonts[sfIndex] = success;
-                    console.log("Loading successful!: ", success);
                     doc.notifier.changed();
                     return success;
                 });
@@ -11540,6 +11539,7 @@ var beepbox = (function (exports) {
             }
         }
         determineCurrentActiveTones(song, channelIndex, samplesPerTick, playSong) {
+            var _a, _b;
             const channel = song.channels[channelIndex];
             const channelState = this.channels[channelIndex];
             const pattern = song.getPattern(channelIndex, this.bar);
@@ -11779,6 +11779,12 @@ var beepbox = (function (exports) {
                             tone.passedEndOfNote = false;
                             tone.forceContinueAtStart = forceContinueAtStart;
                             tone.forceContinueAtEnd = forceContinueAtEnd;
+                            if (!((_a = tone.prevNote) === null || _a === void 0 ? void 0 : _a.originalPitch)) {
+                                tone.note.originalPitch = note.pitches[0];
+                            }
+                            else if (tone.prevNote.originalPitch && forceContinueAtStart) {
+                                tone.note.originalPitch = tone.prevNote.originalPitch;
+                            }
                             this.computeTone(song, channelIndex, samplesPerTick, tone, false, false);
                         }
                         else {
@@ -11853,6 +11859,12 @@ var beepbox = (function (exports) {
                                 tone.passedEndOfNote = passedEndOfNote;
                                 tone.forceContinueAtStart = forceContinueAtStart && prevNoteForThisTone != null;
                                 tone.forceContinueAtEnd = forceContinueAtEnd && nextNoteForThisTone != null;
+                                if (!((_b = tone.prevNote) === null || _b === void 0 ? void 0 : _b.originalPitch)) {
+                                    tone.note.originalPitch = note.pitches[0];
+                                }
+                                else if (tone.prevNote.originalPitch && forceContinueAtStart) {
+                                    tone.note.originalPitch = tone.prevNote.originalPitch;
+                                }
                                 this.computeTone(song, channelIndex, samplesPerTick, tone, false, false);
                             }
                         }
@@ -12023,8 +12035,14 @@ var beepbox = (function (exports) {
             }
             else if (instrument.type == 12) {
                 baseExpression = Config.soundfontBaseExpression;
-                const gens = Soundfont.getGeneratorsOfLevelsFromMidiPitch(instrument.soundfont, instrument.soundfontPreset, tone.pitches[0]);
-                instrumentState.soundfontGens.set(tone.pitches[0], gens);
+                if (tone.note && tone.note.originalPitch) {
+                    const gens = Soundfont.getGeneratorsOfLevelsFromMidiPitch(instrument.soundfont, instrument.soundfontPreset, tone.note.originalPitch);
+                    instrumentState.soundfontGens.set(tone.note.originalPitch, gens);
+                }
+                else {
+                    const gens = Soundfont.getGeneratorsOfLevelsFromMidiPitch(instrument.soundfont, instrument.soundfontPreset, tone.pitches[0]);
+                    instrumentState.soundfontGens.set(tone.pitches[0], gens);
+                }
             }
             else {
                 throw new Error("Unknown instrument type in computeTone.");
@@ -13194,7 +13212,15 @@ var beepbox = (function (exports) {
         static soundfontSynth(synth, bufferIndex, roundedSamplesPerTick, tone, instrumentState) {
             var _a, _b, _c, _d, _e;
             const sf = Soundfont.loadedSoundfonts[instrumentState.soundfontIndex];
-            const gens = instrumentState.soundfontGens.get(tone.pitches[0]);
+            let gens;
+            if (tone.note && tone.note.originalPitch) {
+                gens = instrumentState.soundfontGens.get(tone.note.originalPitch);
+            }
+            else {
+                gens = instrumentState.soundfontGens.get(tone.pitches[0]);
+            }
+            if (!gens)
+                return;
             const currPresetGens = (gens.length > 0) ? gens[0] : null;
             if (!currPresetGens)
                 return;

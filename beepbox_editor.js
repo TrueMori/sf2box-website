@@ -1467,8 +1467,8 @@ var beepbox = (function (exports) {
             return (_a = EditorConfig.presetCategories[0].presets.dictionary) === null || _a === void 0 ? void 0 : _a[TypePresets === null || TypePresets === void 0 ? void 0 : TypePresets[instrument]];
         }
     }
-    EditorConfig.version = "1.0.0";
-    EditorConfig.versionDisplayName = "sf2box " + EditorConfig.version;
+    EditorConfig.version = "2.2.17";
+    EditorConfig.versionDisplayName = "UltraBox " + EditorConfig.version;
     EditorConfig.releaseNotesURL = "./patch_notes.html";
     EditorConfig.isOnMac = /^Mac/i.test(navigator.platform) || /Mac OS X/i.test(navigator.userAgent) || /^(iPhone|iPad|iPod)/i.test(navigator.platform) || /(iPhone|iPad|iPod)/i.test(navigator.userAgent);
     EditorConfig.ctrlSymbol = EditorConfig.isOnMac ? "⌘" : "Ctrl+";
@@ -11050,7 +11050,6 @@ li.select2-results__option[role=group] > strong:hover {
                     }
                     const success = new Soundfont(name, presets, chipWaves, rawChipWaves, rawRawChipWaves, sampleInfo, url, true);
                     this.loadedSoundfonts[sfIndex] = success;
-                    console.log("Loading successful!: ", success);
                     doc.notifier.changed();
                     return success;
                 });
@@ -20024,6 +20023,7 @@ li.select2-results__option[role=group] > strong:hover {
             }
         }
         determineCurrentActiveTones(song, channelIndex, samplesPerTick, playSong) {
+            var _a, _b;
             const channel = song.channels[channelIndex];
             const channelState = this.channels[channelIndex];
             const pattern = song.getPattern(channelIndex, this.bar);
@@ -20263,6 +20263,12 @@ li.select2-results__option[role=group] > strong:hover {
                             tone.passedEndOfNote = false;
                             tone.forceContinueAtStart = forceContinueAtStart;
                             tone.forceContinueAtEnd = forceContinueAtEnd;
+                            if (!((_a = tone.prevNote) === null || _a === void 0 ? void 0 : _a.originalPitch)) {
+                                tone.note.originalPitch = note.pitches[0];
+                            }
+                            else if (tone.prevNote.originalPitch && forceContinueAtStart) {
+                                tone.note.originalPitch = tone.prevNote.originalPitch;
+                            }
                             this.computeTone(song, channelIndex, samplesPerTick, tone, false, false);
                         }
                         else {
@@ -20337,6 +20343,12 @@ li.select2-results__option[role=group] > strong:hover {
                                 tone.passedEndOfNote = passedEndOfNote;
                                 tone.forceContinueAtStart = forceContinueAtStart && prevNoteForThisTone != null;
                                 tone.forceContinueAtEnd = forceContinueAtEnd && nextNoteForThisTone != null;
+                                if (!((_b = tone.prevNote) === null || _b === void 0 ? void 0 : _b.originalPitch)) {
+                                    tone.note.originalPitch = note.pitches[0];
+                                }
+                                else if (tone.prevNote.originalPitch && forceContinueAtStart) {
+                                    tone.note.originalPitch = tone.prevNote.originalPitch;
+                                }
                                 this.computeTone(song, channelIndex, samplesPerTick, tone, false, false);
                             }
                         }
@@ -20507,8 +20519,14 @@ li.select2-results__option[role=group] > strong:hover {
             }
             else if (instrument.type == 12) {
                 baseExpression = Config.soundfontBaseExpression;
-                const gens = Soundfont.getGeneratorsOfLevelsFromMidiPitch(instrument.soundfont, instrument.soundfontPreset, tone.pitches[0]);
-                instrumentState.soundfontGens.set(tone.pitches[0], gens);
+                if (tone.note && tone.note.originalPitch) {
+                    const gens = Soundfont.getGeneratorsOfLevelsFromMidiPitch(instrument.soundfont, instrument.soundfontPreset, tone.note.originalPitch);
+                    instrumentState.soundfontGens.set(tone.note.originalPitch, gens);
+                }
+                else {
+                    const gens = Soundfont.getGeneratorsOfLevelsFromMidiPitch(instrument.soundfont, instrument.soundfontPreset, tone.pitches[0]);
+                    instrumentState.soundfontGens.set(tone.pitches[0], gens);
+                }
             }
             else {
                 throw new Error("Unknown instrument type in computeTone.");
@@ -21678,7 +21696,15 @@ li.select2-results__option[role=group] > strong:hover {
         static soundfontSynth(synth, bufferIndex, roundedSamplesPerTick, tone, instrumentState) {
             var _a, _b, _c, _d, _e;
             const sf = Soundfont.loadedSoundfonts[instrumentState.soundfontIndex];
-            const gens = instrumentState.soundfontGens.get(tone.pitches[0]);
+            let gens;
+            if (tone.note && tone.note.originalPitch) {
+                gens = instrumentState.soundfontGens.get(tone.note.originalPitch);
+            }
+            else {
+                gens = instrumentState.soundfontGens.get(tone.pitches[0]);
+            }
+            if (!gens)
+                return;
             const currPresetGens = (gens.length > 0) ? gens[0] : null;
             if (!currPresetGens)
                 return;
@@ -40635,9 +40661,9 @@ You should be redirected to the song at:<br /><br />
             this._addMultipleSamplesButton = button$2({ style: "height: auto; min-height: var(--button-size); margin-left: 0.5em;" }, "Add multiple samples");
             this._addSamplesAreaBottom = div$2({ style: "margin-top: 0.5em;" }, this._addSampleButton, this._addMultipleSamplesButton);
             this._instructionsLink = a({ href: "#", style: "color:var(--loop-accent, red); font-weight:bold;" }, "> Click Here for instructions on adding samples <");
-            this._description = div$2(div$2({ style: "margin-bottom: 0.5em; -webkit-user-select: text; -moz-user-select: text; -ms-user-select: text; user-select: text; cursor: text;" }, "In order to use the old UltraBox samples, you should add ", code(bundledSamplePacks.legacy), " for the PaandorasBox Samples.", p({}), "You can also use ", code(bundledSamplePacks.nintaribox), " and ", code(bundledSamplePacks.mariopaintbox), " for more built-in sample packs.", "In sf2box, you can now also add custom soundfonts in the same way."), div$2({ style: "margin-bottom: 0.5em;" }, "The order of these samples is important - if you change their order or remove them you'll break your song!"), div$2({ style: "margin-bottom: 0.5em; font-size: 17px;" }, this._instructionsLink));
+            this._description = div$2(div$2({ style: "margin-bottom: 0.5em; -webkit-user-select: text; -moz-user-select: text; -ms-user-select: text; user-select: text; cursor: text;" }, "In order to use the old UltraBox samples, you should add ", code(bundledSamplePacks.legacy), " for the PaandorasBox Samples.", p({}), "You can also use ", code(bundledSamplePacks.nintaribox), " and ", code(bundledSamplePacks.mariopaintbox), " for more built-in sample packs."), div$2({ style: "margin-bottom: 0.5em;" }, "The order of these samples is important - if you change their order or remove them you'll break your song!"), div$2({ style: "margin-bottom: 0.5em; font-size: 17px;" }, this._instructionsLink));
             this._closeInstructionsButton = button$2({ style: "height: auto; min-height: var(--button-size); width: 100%;" }, "Close instructions");
-            this._instructionsArea = div$2({ style: "display: none; margin-top: 0; -webkit-user-select: text; -moz-user-select: text; -ms-user-select: text; user-select: text; cursor: text; overflow-y: auto;" }, h2$1("Add Samples"), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, "In UltraBox and sf2box, custom samples are loaded from arbitrary URLs."), div$2({ style: `margin-top: 0.5em; margin-bottom: 0.5em; color: ${ColorConfig.secondaryText};` }, "(Technically, the web server behind the URL needs to support ", a({ href: "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS", target: "_blank", }, "CORS"), ", but you don't need to know about that: ", " the sample just won't load if that's not the case)"), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, details(summary("Why arbitrary URLs?"), a({ href: "https://pandoras-box-archive.neptendo.repl.co/" }, "A certain BeepBox mod"), " did this with one central server, but it went down, taking down", " the samples with it, though thankfully it got archived.", " This is always an issue with servers: it may run out of space,", " stop working, and so on. With arbitrary URLs, you can always ", " change them to different ones if they stop working."), p({}), "Simply go and upload your samples to a website we suggest down below, once you do that you can copy that URL and paste it into the text input you can find after pressing the 'Add Sample' button.", "You know the sample works once you see the name of the sample appear above the text input! Then just press 'Okay' and your sample will appear! To use samples just change your instrument to a chip wave instrument type and scroll down until you find the samples."), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, "As for where to upload your samples, here are some suggestions:", ul({ style: "text-align: left;" }, li(a({ href: "https://filegarden.com" }, "File Garden")), li(a({ href: "https://www.dropbox.com" }, "Dropbox"), " (domain needs to be ", code("https://dl.dropboxusercontent.com"), ")"))), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, "Static website hosting services may also work (such as ", a({ href: "https://pages.github.com" }, "GitHub Pages"), ")", " but those require a bit more setup."), div$2({ style: "margin-top: 0.5em; margin-bottom: 1em;" }, "Finally, if have a soundfont you'd like to get samples from, consider using this ", a({ href: "./sample_extractor.html", target: "_blank" }, "sample extractor"), "."), div$2({ style: "display: flex; flex-direction: row-reverse; justify-content: space-between; margin-top: 0.5em;" }, this._closeInstructionsButton));
+            this._instructionsArea = div$2({ style: "display: none; margin-top: 0; -webkit-user-select: text; -moz-user-select: text; -ms-user-select: text; user-select: text; cursor: text; overflow-y: auto;" }, h2$1("Add Samples"), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, "In UltraBox, custom samples are loaded from arbitrary URLs."), div$2({ style: `margin-top: 0.5em; margin-bottom: 0.5em; color: ${ColorConfig.secondaryText};` }, "(Technically, the web server behind the URL needs to support ", a({ href: "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS", target: "_blank", }, "CORS"), ", but you don't need to know about that: ", " the sample just won't load if that's not the case)"), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, details(summary("Why arbitrary URLs?"), a({ href: "https://pandoras-box-archive.neptendo.repl.co/" }, "A certain BeepBox mod"), " did this with one central server, but it went down, taking down", " the samples with it, though thankfully it got archived.", " This is always an issue with servers: it may run out of space,", " stop working, and so on. With arbitrary URLs, you can always ", " change them to different ones if they stop working."), p({}), "Simply go and upload your samples to a website we suggest down below, once you do that you can copy that URL and paste it into the text input you can find after pressing the 'Add Sample' button.", "You know the sample works once you see the name of the sample appear above the text input! Then just press 'Okay' and your sample will appear! To use samples just change your instrument to a chip wave instrument type and scroll down until you find the samples."), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, "As for where to upload your samples, here are some suggestions:", ul({ style: "text-align: left;" }, li(a({ href: "https://filegarden.com" }, "File Garden")), li(a({ href: "https://www.dropbox.com" }, "Dropbox"), " (domain needs to be ", code("https://dl.dropboxusercontent.com"), ")"))), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, "Static website hosting services may also work (such as ", a({ href: "https://pages.github.com" }, "GitHub Pages"), ")", " but those require a bit more setup."), div$2({ style: "margin-top: 0.5em; margin-bottom: 1em;" }, "Finally, if have a soundfont you'd like to get samples from, consider using this ", a({ href: "./sample_extractor.html", target: "_blank" }, "sample extractor"), "."), div$2({ style: "display: flex; flex-direction: row-reverse; justify-content: space-between; margin-top: 0.5em;" }, this._closeInstructionsButton));
             this._addSamplesArea = div$2({ style: "overflow-y: auto;" }, h2$1("Add Samples"), div$2({ style: "display: flex; flex-direction: column; align-items: center; margin-bottom: 0.5em;" }, this._description, div$2({ style: "width: 100%; max-height: 450px; overflow-y: scroll;" }, this._entryContainer), this._addSamplesAreaBottom), div$2({ style: "display: flex; flex-direction: row-reverse; justify-content: space-between;" }, this._okayButton));
             this._bulkAddTextarea = textarea({
                 style: "width: 100%; height: 100%; resize: none; box-sizing: border-box;",
