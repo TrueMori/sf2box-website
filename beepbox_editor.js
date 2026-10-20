@@ -1467,8 +1467,8 @@ var beepbox = (function (exports) {
             return (_a = EditorConfig.presetCategories[0].presets.dictionary) === null || _a === void 0 ? void 0 : _a[TypePresets === null || TypePresets === void 0 ? void 0 : TypePresets[instrument]];
         }
     }
-    EditorConfig.version = "2.2.17";
-    EditorConfig.versionDisplayName = "UltraBox " + EditorConfig.version;
+    EditorConfig.version = "1.0.0";
+    EditorConfig.versionDisplayName = "sf2box " + EditorConfig.version;
     EditorConfig.releaseNotesURL = "./patch_notes.html";
     EditorConfig.isOnMac = /^Mac/i.test(navigator.platform) || /Mac OS X/i.test(navigator.userAgent) || /^(iPhone|iPad|iPod)/i.test(navigator.platform) || /(iPhone|iPad|iPod)/i.test(navigator.userAgent);
     EditorConfig.ctrlSymbol = EditorConfig.isOnMac ? "⌘" : "Ctrl+";
@@ -10768,7 +10768,7 @@ li.select2-results__option[role=group] > strong:hover {
         reserved3: { op: 55, presetAllowed: false, instrumentAllowed: false, type: GeneratorCombination.none, defaultValue: 0, parseType: ParseType.Uint16 },
         scaleTuning: { op: 56, presetAllowed: true, instrumentAllowed: false, type: GeneratorCombination.override, defaultValue: 100, parseType: ParseType.Int16 },
         exclusiveClass: { op: 57, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: 0, parseType: ParseType.Uint16 },
-        overridingRootKey: { op: 58, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: 65535, parseType: ParseType.Uint16 },
+        overridingRootKey: { op: 58, presetAllowed: false, instrumentAllowed: true, type: GeneratorCombination.override, defaultValue: null, parseType: ParseType.Uint16 },
         unused5: { op: 59, presetAllowed: false, instrumentAllowed: false, type: GeneratorCombination.none, defaultValue: 0, parseType: ParseType.Uint16 },
         endOper: { op: 60, presetAllowed: false, instrumentAllowed: false, type: GeneratorCombination.none, defaultValue: 0, parseType: ParseType.Uint16 },
     };
@@ -11129,9 +11129,9 @@ li.select2-results__option[role=group] > strong:hover {
             }
             return result;
         }
-        static getGenDef(gen) {
+        static getGenDef(op) {
             for (const presetGen in GENERATORS) {
-                if (GENERATORS[presetGen].op == gen.op) {
+                if (GENERATORS[presetGen].op == op) {
                     return GENERATORS[presetGen];
                 }
             }
@@ -11157,7 +11157,7 @@ li.select2-results__option[role=group] > strong:hover {
             return waves;
         }
         static resolveGlobalAndZoneGen(globalGen, zoneGen) {
-            const genDef = this.getGenDef(zoneGen);
+            const genDef = this.getGenDef(zoneGen.op);
             if (genDef.type == GeneratorCombination.range && globalGen) {
                 const globalRange = this.getRangeTypeValues(globalGen.amt);
                 const zoneRange = this.getRangeTypeValues(zoneGen.amt);
@@ -11171,7 +11171,7 @@ li.select2-results__option[role=group] > strong:hover {
             }
         }
         static resolvePresetAndInstGen(presetGen, instGen) {
-            const genDef = this.getGenDef(presetGen);
+            const genDef = this.getGenDef(presetGen.op);
             if (genDef.type == GeneratorCombination.range) {
                 const presetRange = this.getRangeTypeValues(presetGen.amt);
                 const instRange = this.getRangeTypeValues(instGen.amt);
@@ -11246,12 +11246,21 @@ li.select2-results__option[role=group] > strong:hover {
             }
             return null;
         }
-        static getGenAmtFromOp(genList, op) {
-            var _a, _b;
-            const gens = genList.gens;
-            const foundGen = gens.find(gen => gen.op === op);
-            const genDef = Object.values(GENERATORS).find(def => def.op === op);
-            return (_b = (_a = foundGen === null || foundGen === void 0 ? void 0 : foundGen.amt) !== null && _a !== void 0 ? _a : genDef === null || genDef === void 0 ? void 0 : genDef.defaultValue) !== null && _b !== void 0 ? _b : null;
+        static getGenAmtFromOp(instGens, presetGens, op) {
+            var _a, _b, _c, _d, _e, _f, _g, _h;
+            const genDef = this.getGenDef(op);
+            if (genDef.instrumentAllowed && genDef.presetAllowed) {
+                return (_d = (_b = (_a = instGens.gens.find((gen) => gen.op == op)) === null || _a === void 0 ? void 0 : _a.amt) !== null && _b !== void 0 ? _b : (_c = presetGens.gens.find((gen) => gen.op == op)) === null || _c === void 0 ? void 0 : _c.amt) !== null && _d !== void 0 ? _d : genDef.defaultValue;
+            }
+            else if (genDef.instrumentAllowed) {
+                return (_f = (_e = instGens.gens.find((gen) => gen.op == op)) === null || _e === void 0 ? void 0 : _e.amt) !== null && _f !== void 0 ? _f : genDef.defaultValue;
+            }
+            else if (genDef.presetAllowed) {
+                return (_h = (_g = presetGens.gens.find((gen) => gen.op == op)) === null || _g === void 0 ? void 0 : _g.amt) !== null && _h !== void 0 ? _h : genDef.defaultValue;
+            }
+            else {
+                return null;
+            }
         }
         constructor(name, presets, chipWaves, rawChipWaves, rawRawChipWaves, sampleInfo, url, success) {
             this.name = name;
@@ -21694,7 +21703,7 @@ li.select2-results__option[role=group] > strong:hover {
             tone.initialNoteFilterInput2 = initialFilterInput2;
         }
         static soundfontSynth(synth, bufferIndex, roundedSamplesPerTick, tone, instrumentState) {
-            var _a, _b, _c, _d, _e;
+            var _a;
             const sf = Soundfont.loadedSoundfonts[instrumentState.soundfontIndex];
             let gens;
             if (tone.note && tone.note.originalPitch) {
@@ -21711,16 +21720,16 @@ li.select2-results__option[role=group] > strong:hover {
             const currInstGens = (currPresetGens.instGenerators.length > 0) ? gens[0].instGenerators[0] : null;
             if (!currInstGens)
                 return;
-            const sIndex = Soundfont.getGenAmtFromOp(currInstGens, GENERATORS.sampleID.op);
-            const loopMode = Soundfont.getGenAmtFromOp(currInstGens, GENERATORS.sampleModes.op);
+            const sIndex = Soundfont.getGenAmtFromOp(currInstGens, currPresetGens, GENERATORS.sampleID.op);
+            const loopMode = Soundfont.getGenAmtFromOp(currInstGens, currPresetGens, GENERATORS.sampleModes.op);
             const currSample = sf.chipWaves[sIndex];
             const sInfo = sf.sampleInfo[sIndex];
             if (!currSample)
                 return;
-            let originalPitch = (_a = Soundfont.getGenAmtFromOp(currInstGens, GENERATORS.overridingRootKey.op)) !== null && _a !== void 0 ? _a : sInfo.originalPitch;
-            const pitchCorrectionCourse = (_b = Soundfont.getGenAmtFromOp(currInstGens, GENERATORS.coarseTune.op)) !== null && _b !== void 0 ? _b : 0;
-            const pitchCorrectionFine = (_c = Soundfont.getGenAmtFromOp(currInstGens, GENERATORS.fineTune.op)) !== null && _c !== void 0 ? _c : 0;
-            const scaleTuning = (_e = (_d = Soundfont.getGenAmtFromOp(currInstGens, GENERATORS.scaleTuning.op)) !== null && _d !== void 0 ? _d : Soundfont.getGenAmtFromOp(currPresetGens, GENERATORS.scaleTuning.op)) !== null && _e !== void 0 ? _e : 100;
+            let originalPitch = (_a = Soundfont.getGenAmtFromOp(currInstGens, currPresetGens, GENERATORS.overridingRootKey.op)) !== null && _a !== void 0 ? _a : sInfo.originalPitch;
+            const pitchCorrectionCourse = Soundfont.getGenAmtFromOp(currInstGens, currPresetGens, GENERATORS.coarseTune.op);
+            const pitchCorrectionFine = Soundfont.getGenAmtFromOp(currInstGens, currPresetGens, GENERATORS.fineTune.op);
+            const scaleTuning = Soundfont.getGenAmtFromOp(currInstGens, currPresetGens, GENERATORS.scaleTuning.op);
             originalPitch = (originalPitch == 65535) ? sInfo.originalPitch : originalPitch;
             const rootFreq = Instrument.frequencyFromPitch(originalPitch - pitchCorrectionCourse - pitchCorrectionFine / 100.0 - sInfo.pCorrection / 100.0);
             const waveLength = currSample.length;
@@ -38197,7 +38206,7 @@ You should be redirected to the song at:<br /><br />
             this._metronomeWhileRecording = input$5({ style: "width: 2em; margin-left: 1em;", type: "checkbox" });
             this._okayButton = button$8({ class: "okayButton", style: "width:45%;" }, "Okay");
             this._cancelButton = button$8({ class: "cancelButton" });
-            this.container = div$8({ class: "prompt noSelection recordingSetupPrompt", style: "width: 600px; text-align: right; max-height: 90%;" }, h2$7({ style: "align-self: center;" }, "Note Recording Setup"), div$8({ style: "display: grid; overflow-y: auto; overflow-x: hidden; flex-shrink: 1;" }, p$3("UltraBox can record notes as you perform them. You can start recording by pressing Ctrl+Space (or " + EditorConfig.ctrlSymbol + "P)."), label({ style: "display: flex; flex-direction: row; align-items: center; height: 2em; justify-content: center;" }, "Add ● record button next to ▶ play button:", this._showRecordButton), label({ style: "display: flex; flex-direction: row; align-items: center; height: 2em; justify-content: center;" }, "Snap recorded notes to the song's rhythm:", this._snapRecordedNotesToRhythm), label({ style: "display: flex; flex-direction: row; align-items: center; height: 2em; justify-content: center;" }, "Ignore notes not in the song's scale:", this._ignorePerformedNotesNotInScale), p$3("While recording, you can perform notes on your keyboard!"), label({ style: "display: flex; flex-direction: row; align-items: center; margin-top: 0.5em; margin-bottom: 0.5em; height: 2em; justify-content: center;" }, "Keyboard layout:", div$8({ class: "selectContainer", style: "width: 50%; margin-left: 1em;" }, this._keyboardLayout)), this._keyboardLayoutPreview, p$3("When not recording, you can use the computer keyboard either for shortcuts (like C and V for copy and paste) or for performing notes, depending on this mode:"), label({ style: "display: flex; margin-top: 0.5em; margin-bottom: 0.5em; flex-direction: row; align-items: center; height: 2em; justify-content: center;" }, div$8({ class: "selectContainer", style: "width: 50%;" }, this._keyboardMode)), p$3("Performing music takes practice! Try slowing the tempo and using this metronome to help you keep a rhythm."), label({ style: "display: flex; flex-direction: row; align-items: center; height: 2em; justify-content: center;" }, "Hear metronome while recording:", this._metronomeWhileRecording), label({ style: "display: flex; flex-direction: row; align-items: center; height: 2em; justify-content: center;" }, "Count-in 1 bar of metronome before recording:", this._metronomeCountIn), p$3("If you have a ", a$2({ href: "https://caniuse.com/midi", target: "_blank" }, "compatible browser"), " on a device connected to a MIDI keyboard, you can use it to perform notes in UltraBox! (Or you could buy ", a$2({ href: "https://imitone.com/", target: "_blank" }, "Imitone"), " or ", a$2({ href: "https://vochlea.com/", target: "_blank" }, "Dubler"), " to hum notes into a microphone while wearing headphones!)"), label({ style: "display: flex; flex-direction: row; align-items: center; margin-top: 0.5em; height: 2em; justify-content: center;" }, "Enable MIDI performance:", this._enableMidi), p$3("The range of pitches available to play via your computer keyboard is affected by the octave scrollbar of the currently selected channel."), p$3("If you set the channel offset below to 'before' or 'after', notes below the middle octave in the view will be 'bass' notes, and placed in the channel before or after the viewed one. Using this, you can play bass and lead at the same time!"), label({ style: "display: flex; flex-direction: row; align-items: center; margin-top: 0.5em; margin-bottom: 0.5em; height: 2em; justify-content: center;" }, "Bass Offset:", div$8({ class: "selectContainer", style: "width: 50%; margin-left: 1em;" }, this._bassOffset)), p$3("Once you enable the setting, the keyboard layout above will darken to denote the new bass notes. The notes will be recorded with independent timing and this works with MIDI devices, too. Be aware that the octave offset of both used channels will impact how high/low the bass/lead are relative to one another."), p$3("Recorded notes often overlap such that one note ends after the next note already started. In UltraBox, these notes get split into multiple notes which may sound different when re-played than they did when you were recording. To fix the sound, you can either manually clean up the notes in the pattern editor, or you could try enabling the \"transition type\" effect on the instrument and setting it to \"continue\"."), div$8({ style: `width: 100%; height: 80px; background: linear-gradient(rgba(0,0,0,0), ${ColorConfig.editorBackground}); position: sticky; bottom: 0; pointer-events: none;` })), div$8({ style: "display: flex; flex-direction: row-reverse; justify-content: space-between;" }, this._okayButton), this._cancelButton);
+            this.container = div$8({ class: "prompt noSelection recordingSetupPrompt", style: "width: 600px; text-align: right; max-height: 90%;" }, h2$7({ style: "align-self: center;" }, "Note Recording Setup"), div$8({ style: "display: grid; overflow-y: auto; overflow-x: hidden; flex-shrink: 1;" }, p$3("sf2box can record notes as you perform them. You can start recording by pressing Ctrl+Space (or " + EditorConfig.ctrlSymbol + "P)."), label({ style: "display: flex; flex-direction: row; align-items: center; height: 2em; justify-content: center;" }, "Add ● record button next to ▶ play button:", this._showRecordButton), label({ style: "display: flex; flex-direction: row; align-items: center; height: 2em; justify-content: center;" }, "Snap recorded notes to the song's rhythm:", this._snapRecordedNotesToRhythm), label({ style: "display: flex; flex-direction: row; align-items: center; height: 2em; justify-content: center;" }, "Ignore notes not in the song's scale:", this._ignorePerformedNotesNotInScale), p$3("While recording, you can perform notes on your keyboard!"), label({ style: "display: flex; flex-direction: row; align-items: center; margin-top: 0.5em; margin-bottom: 0.5em; height: 2em; justify-content: center;" }, "Keyboard layout:", div$8({ class: "selectContainer", style: "width: 50%; margin-left: 1em;" }, this._keyboardLayout)), this._keyboardLayoutPreview, p$3("When not recording, you can use the computer keyboard either for shortcuts (like C and V for copy and paste) or for performing notes, depending on this mode:"), label({ style: "display: flex; margin-top: 0.5em; margin-bottom: 0.5em; flex-direction: row; align-items: center; height: 2em; justify-content: center;" }, div$8({ class: "selectContainer", style: "width: 50%;" }, this._keyboardMode)), p$3("Performing music takes practice! Try slowing the tempo and using this metronome to help you keep a rhythm."), label({ style: "display: flex; flex-direction: row; align-items: center; height: 2em; justify-content: center;" }, "Hear metronome while recording:", this._metronomeWhileRecording), label({ style: "display: flex; flex-direction: row; align-items: center; height: 2em; justify-content: center;" }, "Count-in 1 bar of metronome before recording:", this._metronomeCountIn), p$3("If you have a ", a$2({ href: "https://caniuse.com/midi", target: "_blank" }, "compatible browser"), " on a device connected to a MIDI keyboard, you can use it to perform notes in sf2box! (Or you could buy ", a$2({ href: "https://imitone.com/", target: "_blank" }, "Imitone"), " or ", a$2({ href: "https://vochlea.com/", target: "_blank" }, "Dubler"), " to hum notes into a microphone while wearing headphones!)"), label({ style: "display: flex; flex-direction: row; align-items: center; margin-top: 0.5em; height: 2em; justify-content: center;" }, "Enable MIDI performance:", this._enableMidi), p$3("The range of pitches available to play via your computer keyboard is affected by the octave scrollbar of the currently selected channel."), p$3("If you set the channel offset below to 'before' or 'after', notes below the middle octave in the view will be 'bass' notes, and placed in the channel before or after the viewed one. Using this, you can play bass and lead at the same time!"), label({ style: "display: flex; flex-direction: row; align-items: center; margin-top: 0.5em; margin-bottom: 0.5em; height: 2em; justify-content: center;" }, "Bass Offset:", div$8({ class: "selectContainer", style: "width: 50%; margin-left: 1em;" }, this._bassOffset)), p$3("Once you enable the setting, the keyboard layout above will darken to denote the new bass notes. The notes will be recorded with independent timing and this works with MIDI devices, too. Be aware that the octave offset of both used channels will impact how high/low the bass/lead are relative to one another."), p$3("Recorded notes often overlap such that one note ends after the next note already started. In sf2box, these notes get split into multiple notes which may sound different when re-played than they did when you were recording. To fix the sound, you can either manually clean up the notes in the pattern editor, or you could try enabling the \"transition type\" effect on the instrument and setting it to \"continue\"."), div$8({ style: `width: 100%; height: 80px; background: linear-gradient(rgba(0,0,0,0), ${ColorConfig.editorBackground}); position: sticky; bottom: 0; pointer-events: none;` })), div$8({ style: "display: flex; flex-direction: row-reverse; justify-content: space-between;" }, this._okayButton), this._cancelButton);
             this._close = () => {
                 this._doc.undo();
             };
@@ -39012,7 +39021,7 @@ You should be redirected to the song at:<br /><br />
                     break;
                 case "instrumentIndex":
                     {
-                        message = div$5(h2$4("Instrument Number"), p$1("In the \"Channel Settings\" option from UltraBox's \"Edit\" menu, there are a few ways to enable multiple instruments per channel."), p$1("First, you could enable multiple simultaneous instruments per channel. All of the channel's instruments will play all of the notes in the channel at the same time, and you can click an instrument number to view and edit its settings."), p$1("Second, you could enable different instruments per pattern. Only one of the instruments will play at any given time, but you can click the instrument number to change which instrument is used for the currently selected pattern(s)."), p$1("Finally, you can enable them both, in which case you can click an instrument number once to view it, and again to toggle whether the instrument is used for the currently selected pattern(s)."), p$1("Either way, you can click the + button to add more instruments to a channel, and you can press shift and a number key on your keyboard to select an instrument as if you had clicked the corresponding button here."));
+                        message = div$5(h2$4("Instrument Number"), p$1("In the \"Channel Settings\" option from sf2box's \"Edit\" menu, there are a few ways to enable multiple instruments per channel."), p$1("First, you could enable multiple simultaneous instruments per channel. All of the channel's instruments will play all of the notes in the channel at the same time, and you can click an instrument number to view and edit its settings."), p$1("Second, you could enable different instruments per pattern. Only one of the instruments will play at any given time, but you can click the instrument number to change which instrument is used for the currently selected pattern(s)."), p$1("Finally, you can enable them both, in which case you can click an instrument number once to view it, and again to toggle whether the instrument is used for the currently selected pattern(s)."), p$1("Either way, you can click the + button to add more instruments to a channel, and you can press shift and a number key on your keyboard to select an instrument as if you had clicked the corresponding button here."));
                     }
                     break;
                 case "instrumentVolume":
@@ -39047,7 +39056,7 @@ You should be redirected to the song at:<br /><br />
                     break;
                 case "instrumentType":
                     {
-                        message = div$5(h2$4("Instrument Type"), p$1("UltraBox comes with many instrument presets, try them out! You can also create your own custom instruments!"), p$1("There are also buttons for copying and pasting instruments at the bottom of the instrument settings tab, and for generating random instruments in the \"Randomize\" category in the instrument type menu."));
+                        message = div$5(h2$4("Instrument Type"), p$1("sf2box comes with many instrument presets, try them out! You can also create your own custom instruments!"), p$1("There are also buttons for copying and pasting instruments at the bottom of the instrument settings tab, and for generating random instruments in the \"Randomize\" category in the instrument type menu."));
                     }
                     break;
                 case "eqFilter":
@@ -39072,12 +39081,12 @@ You should be redirected to the song at:<br /><br />
                     break;
                 case "chipWave":
                     {
-                        message = div$5(h2$4("Chip Wave"), p$1("UltraBox comes with some sound waves based on classic electronic sound chips, as well as several unique waves. This is the basic source of the sound of the instrument, which is modified by the other instrument settings."));
+                        message = div$5(h2$4("Chip Wave"), p$1("sf2box comes with some sound waves based on classic electronic sound chips, as well as several unique waves. This is the basic source of the sound of the instrument, which is modified by the other instrument settings."));
                     }
                     break;
                 case "chipNoise":
                     {
-                        message = div$5(h2$4("Noise"), p$1("UltraBox comes with several basic noise sounds. These do not have any distinct musical pitch, and can be used like drums to create beats and emphasize your song's rhythm."));
+                        message = div$5(h2$4("Noise"), p$1("sf2box comes with several basic noise sounds. These do not have any distinct musical pitch, and can be used like drums to create beats and emphasize your song's rhythm."));
                     }
                     break;
                 case "supersawDynamism":
@@ -39107,7 +39116,7 @@ You should be redirected to the song at:<br /><br />
                     break;
                 case "chords":
                     {
-                        message = div$5(h2$4("Chords"), p$1("When multiple different notes occur at the same time, this is called a chord. Chords can be created in UltraBox's pattern editor by adding notes above or below another note."), p$1("This setting determines how chords are played. The standard option is \"simultaneous\" which starts playing all of the pitches in a chord at the same instant. The \"strum\" option is similar, but plays the notes starting at slightly different times. The \"arpeggio\" option is used in \"chiptune\" style music and plays a single tone that rapidly alternates between all of the pitches in the chord."), p$1("Some UltraBox instruments have an option called \"custom interval\" which uses the chord notes to control the interval between the waves of a single tone. This can create strange sound effects when combined with FM modulators."));
+                        message = div$5(h2$4("Chords"), p$1("When multiple different notes occur at the same time, this is called a chord. Chords can be created in sf2box's pattern editor by adding notes above or below another note."), p$1("This setting determines how chords are played. The standard option is \"simultaneous\" which starts playing all of the pitches in a chord at the same instant. The \"strum\" option is similar, but plays the notes starting at slightly different times. The \"arpeggio\" option is used in \"chiptune\" style music and plays a single tone that rapidly alternates between all of the pitches in the chord."), p$1("Some sf2box instruments have an option called \"custom interval\" which uses the chord notes to control the interval between the waves of a single tone. This can create strange sound effects when combined with FM modulators."));
                     }
                     break;
                 case "vibrato":
@@ -39172,7 +39181,7 @@ You should be redirected to the song at:<br /><br />
                     break;
                 case "effects":
                     {
-                        message = div$5(h2$4("Effects"), p$1("UltraBox has many different kinds of special effects you can add to instruments. You can turn on multiple effects at once, and they can be configured individually. Try them all out!"));
+                        message = div$5(h2$4("Effects"), p$1("sf2box has many different kinds of special effects you can add to instruments. You can turn on multiple effects at once, and they can be configured individually. Try them all out!"));
                     }
                     break;
                 case "drumsetEnvelope":
@@ -39282,7 +39291,7 @@ You should be redirected to the song at:<br /><br />
                     break;
                 case "aliases":
                     {
-                        message = div$5(h2$4("Aliasing"), p$1("UltraBox applies a technique called 'anti-aliasing' to instruments normally to help them sound cleaner even at high frequencies and low sample rates."), p$1("When this setting is ticked that technique is disabled, so you may hear strange audio artifacts especially at high pitches and when bending notes. However, this can lend a grungy sound to an instrument that could be desirable."));
+                        message = div$5(h2$4("Aliasing"), p$1("sf2box applies a technique called 'anti-aliasing' to instruments normally to help them sound cleaner even at high frequencies and low sample rates."), p$1("When this setting is ticked that technique is disabled, so you may hear strange audio artifacts especially at high pitches and when bending notes. However, this can lend a grungy sound to an instrument that could be desirable."));
                     }
                     break;
                 case "operatorWaveform":
@@ -39297,7 +39306,7 @@ You should be redirected to the song at:<br /><br />
                     break;
                 case "filterCutoff":
                     {
-                        message = div$5(h2$4("Low-Pass Filter Cutoff Frequency"), p$1("The lowest setting feels \"muffled\" or \"dark\", and the highest setting feels \"harsh\" or \"bright\"."), p$1("Most sounds include a range of frequencies from low to high. UltraBox instruments have a filter that allows the lowest frequencies to pass through at full volume, but can reduce the volume of the higher frequencies that are above a cutoff frequency. This setting controls the cutoff frequency and thus the range of higher frequencies that are reduced."), p$1("This cutoff setting also determines which frequency resonates when the resonance peak setting is used."));
+                        message = div$5(h2$4("Low-Pass Filter Cutoff Frequency"), p$1("The lowest setting feels \"muffled\" or \"dark\", and the highest setting feels \"harsh\" or \"bright\"."), p$1("Most sounds include a range of frequencies from low to high. sf2box instruments have a filter that allows the lowest frequencies to pass through at full volume, but can reduce the volume of the higher frequencies that are above a cutoff frequency. This setting controls the cutoff frequency and thus the range of higher frequencies that are reduced."), p$1("This cutoff setting also determines which frequency resonates when the resonance peak setting is used."));
                     }
                     break;
                 case "filterResonance":
@@ -40661,9 +40670,9 @@ You should be redirected to the song at:<br /><br />
             this._addMultipleSamplesButton = button$2({ style: "height: auto; min-height: var(--button-size); margin-left: 0.5em;" }, "Add multiple samples");
             this._addSamplesAreaBottom = div$2({ style: "margin-top: 0.5em;" }, this._addSampleButton, this._addMultipleSamplesButton);
             this._instructionsLink = a({ href: "#", style: "color:var(--loop-accent, red); font-weight:bold;" }, "> Click Here for instructions on adding samples <");
-            this._description = div$2(div$2({ style: "margin-bottom: 0.5em; -webkit-user-select: text; -moz-user-select: text; -ms-user-select: text; user-select: text; cursor: text;" }, "In order to use the old UltraBox samples, you should add ", code(bundledSamplePacks.legacy), " for the PaandorasBox Samples.", p({}), "You can also use ", code(bundledSamplePacks.nintaribox), " and ", code(bundledSamplePacks.mariopaintbox), " for more built-in sample packs."), div$2({ style: "margin-bottom: 0.5em;" }, "The order of these samples is important - if you change their order or remove them you'll break your song!"), div$2({ style: "margin-bottom: 0.5em; font-size: 17px;" }, this._instructionsLink));
+            this._description = div$2(div$2({ style: "margin-bottom: 0.5em; -webkit-user-select: text; -moz-user-select: text; -ms-user-select: text; user-select: text; cursor: text;" }, "In order to use the old UltraBox samples, you should add ", code(bundledSamplePacks.legacy), " for the PaandorasBox Samples.", p({}), "You can also use ", code(bundledSamplePacks.nintaribox), " and ", code(bundledSamplePacks.mariopaintbox), " for more built-in sample packs."), div$2({ style: "margin-bottom: 0.5em;" }, "The order of these samples is important - if you change their order or remove them you'll break your song!"), div$2({ style: "margin-bottom: 0.5em;" }, "In sf2box, you can also import soundfonts using the same method as custom chip samples."), div$2({ style: "margin-bottom: 0.5em; font-size: 17px;" }, this._instructionsLink));
             this._closeInstructionsButton = button$2({ style: "height: auto; min-height: var(--button-size); width: 100%;" }, "Close instructions");
-            this._instructionsArea = div$2({ style: "display: none; margin-top: 0; -webkit-user-select: text; -moz-user-select: text; -ms-user-select: text; user-select: text; cursor: text; overflow-y: auto;" }, h2$1("Add Samples"), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, "In UltraBox, custom samples are loaded from arbitrary URLs."), div$2({ style: `margin-top: 0.5em; margin-bottom: 0.5em; color: ${ColorConfig.secondaryText};` }, "(Technically, the web server behind the URL needs to support ", a({ href: "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS", target: "_blank", }, "CORS"), ", but you don't need to know about that: ", " the sample just won't load if that's not the case)"), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, details(summary("Why arbitrary URLs?"), a({ href: "https://pandoras-box-archive.neptendo.repl.co/" }, "A certain BeepBox mod"), " did this with one central server, but it went down, taking down", " the samples with it, though thankfully it got archived.", " This is always an issue with servers: it may run out of space,", " stop working, and so on. With arbitrary URLs, you can always ", " change them to different ones if they stop working."), p({}), "Simply go and upload your samples to a website we suggest down below, once you do that you can copy that URL and paste it into the text input you can find after pressing the 'Add Sample' button.", "You know the sample works once you see the name of the sample appear above the text input! Then just press 'Okay' and your sample will appear! To use samples just change your instrument to a chip wave instrument type and scroll down until you find the samples."), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, "As for where to upload your samples, here are some suggestions:", ul({ style: "text-align: left;" }, li(a({ href: "https://filegarden.com" }, "File Garden")), li(a({ href: "https://www.dropbox.com" }, "Dropbox"), " (domain needs to be ", code("https://dl.dropboxusercontent.com"), ")"))), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, "Static website hosting services may also work (such as ", a({ href: "https://pages.github.com" }, "GitHub Pages"), ")", " but those require a bit more setup."), div$2({ style: "margin-top: 0.5em; margin-bottom: 1em;" }, "Finally, if have a soundfont you'd like to get samples from, consider using this ", a({ href: "./sample_extractor.html", target: "_blank" }, "sample extractor"), "."), div$2({ style: "display: flex; flex-direction: row-reverse; justify-content: space-between; margin-top: 0.5em;" }, this._closeInstructionsButton));
+            this._instructionsArea = div$2({ style: "display: none; margin-top: 0; -webkit-user-select: text; -moz-user-select: text; -ms-user-select: text; user-select: text; cursor: text; overflow-y: auto;" }, h2$1("Add Samples"), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, "In UltraBox and sf2box, custom samples are loaded from arbitrary URLs."), div$2({ style: `margin-top: 0.5em; margin-bottom: 0.5em; color: ${ColorConfig.secondaryText};` }, "(Technically, the web server behind the URL needs to support ", a({ href: "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS", target: "_blank", }, "CORS"), ", but you don't need to know about that: ", " the sample just won't load if that's not the case)"), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, details(summary("Why arbitrary URLs?"), a({ href: "https://pandoras-box-archive.neptendo.repl.co/" }, "A certain BeepBox mod"), " did this with one central server, but it went down, taking down", " the samples with it, though thankfully it got archived.", " This is always an issue with servers: it may run out of space,", " stop working, and so on. With arbitrary URLs, you can always ", " change them to different ones if they stop working."), p({}), "Simply go and upload your samples to a website we suggest down below, once you do that you can copy that URL and paste it into the text input you can find after pressing the 'Add Sample' button.", "You know the sample works once you see the name of the sample appear above the text input! Then just press 'Okay' and your sample will appear! To use samples just change your instrument to a chip wave instrument type and scroll down until you find the samples."), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, "As for where to upload your samples, here are some suggestions:", ul({ style: "text-align: left;" }, li(a({ href: "https://filegarden.com" }, "File Garden")), li(a({ href: "https://www.dropbox.com" }, "Dropbox"), " (domain needs to be ", code("https://dl.dropboxusercontent.com"), ")"))), div$2({ style: "margin-top: 0.5em; margin-bottom: 0.5em;" }, "Static website hosting services may also work (such as ", a({ href: "https://pages.github.com" }, "GitHub Pages"), ")", " but those require a bit more setup."), div$2({ style: "margin-top: 0.5em; margin-bottom: 1em;" }, "Finally, if have a soundfont you'd like to get samples from, consider using this ", a({ href: "./sample_extractor.html", target: "_blank" }, "sample extractor"), "."), div$2({ style: "display: flex; flex-direction: row-reverse; justify-content: space-between; margin-top: 0.5em;" }, this._closeInstructionsButton));
             this._addSamplesArea = div$2({ style: "overflow-y: auto;" }, h2$1("Add Samples"), div$2({ style: "display: flex; flex-direction: column; align-items: center; margin-bottom: 0.5em;" }, this._description, div$2({ style: "width: 100%; max-height: 450px; overflow-y: scroll;" }, this._entryContainer), this._addSamplesAreaBottom), div$2({ style: "display: flex; flex-direction: row-reverse; justify-content: space-between;" }, this._okayButton));
             this._bulkAddTextarea = textarea({
                 style: "width: 100%; height: 100%; resize: none; box-sizing: border-box;",
