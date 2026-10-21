@@ -11192,7 +11192,11 @@ li.select2-results__option[role=group] > strong:hover {
             const sf = Soundfont.loadedSoundfonts[soundfontIndex];
             const preset = sf.presets[presetIndex];
             const globalPresetGens = new Map();
+            if (!preset) {
+                return [];
+            }
             preset.globalGens.forEach((gen) => globalPresetGens.set(gen.op, gen.amt));
+            let pZoneIndex = 0;
             for (const pZone of preset.presetZones) {
                 if (pitch < Math.max(pZone.minPitch, preset.minPitch) || pitch > Math.min(pZone.maxPitch, preset.maxPitch))
                     continue;
@@ -11208,6 +11212,7 @@ li.select2-results__option[role=group] > strong:hover {
                 const instGens = [];
                 const instrument = pZone.instrument;
                 instrument.globalGens.forEach((gen) => globalInstGens.set(gen.op, gen.amt));
+                let iZoneIndex = 0;
                 for (const iZone of pZone.instrument.instrumentZones) {
                     if (pitch < Math.max(iZone.minPitch, instrument.minPitch) || pitch > Math.min(iZone.maxPitch, instrument.maxPitch))
                         continue;
@@ -11232,10 +11237,12 @@ li.select2-results__option[role=group] > strong:hover {
                             iGens.push(gen);
                         }
                     });
-                    instGens.push({ gens: iGens });
+                    instGens.push({ gens: iGens, index: iZoneIndex });
+                    iZoneIndex++;
                 }
                 if (instGens.length > 0)
-                    generators.push({ gens: presetGens, instGenerators: instGens });
+                    generators.push({ gens: presetGens, instGenerators: instGens, index: pZoneIndex });
+                pZoneIndex++;
             }
             return generators;
         }
@@ -17891,6 +17898,9 @@ li.select2-results__option[role=group] > strong:hover {
             this.filterResonanceStart = 0.0;
             this.filterResonanceDelta = 0.0;
             this.isFirstOrder = false;
+            this.sfPhases = new Map();
+            this.sfInitialNoteFilterInput1 = new Map();
+            this.sfInitialNoteFilterInput2 = new Map();
             this.envelopeComputer = new EnvelopeComputer();
             this.reset();
         }
@@ -17908,6 +17918,9 @@ li.select2-results__option[role=group] > strong:hover {
                 this.feedbackOutputs[i] = 0.0;
                 this.prevPitchExpressions[i] = null;
             }
+            this.sfPhases.clear();
+            this.sfInitialNoteFilterInput1.clear();
+            this.sfInitialNoteFilterInput2.clear();
             for (let i = 0; i < this.noteFilterCount; i++) {
                 this.noteFilters[i].resetOutput();
             }
@@ -17973,13 +17986,18 @@ li.select2-results__option[role=group] > strong:hover {
             this.distortionDelta = 0.0;
             this.distortionDrive = 0.0;
             this.distortionDriveDelta = 0.0;
-            this.distortionFractionalInput1 = 0.0;
-            this.distortionFractionalInput2 = 0.0;
-            this.distortionFractionalInput3 = 0.0;
+            this.distortionFractionalInputL1 = 0.0;
+            this.distortionFractionalInputL2 = 0.0;
+            this.distortionFractionalInputL3 = 0.0;
+            this.distortionFractionalInputR1 = 0.0;
+            this.distortionFractionalInputR2 = 0.0;
+            this.distortionFractionalInputR3 = 0.0;
             this.distortionPrevInput = 0.0;
             this.distortionNextOutput = 0.0;
-            this.bitcrusherPrevInput = 0.0;
-            this.bitcrusherCurrentOutput = 0.0;
+            this.bitcrusherPrevInputL = 0.0;
+            this.bitcrusherPrevInputR = 0.0;
+            this.bitcrusherCurrentOutputL = 0.0;
+            this.bitcrusherCurrentOutputR = 0.0;
             this.bitcrusherPhase = 1.0;
             this.bitcrusherPhaseDelta = 0.0;
             this.bitcrusherPhaseDeltaScale = 1.0;
@@ -17987,11 +18005,15 @@ li.select2-results__option[role=group] > strong:hover {
             this.bitcrusherScaleScale = 1.0;
             this.bitcrusherFoldLevel = 1.0;
             this.bitcrusherFoldLevelScale = 1.0;
-            this.eqFilters = [];
+            this.eqFiltersL = [];
+            this.eqFiltersR = [];
             this.eqFilterCount = 0;
-            this.initialEqFilterInput1 = 0.0;
-            this.initialEqFilterInput2 = 0.0;
-            this.panningDelayLine = null;
+            this.initialEqFilterInputL1 = 0.0;
+            this.initialEqFilterInputR1 = 0.0;
+            this.initialEqFilterInputL2 = 0.0;
+            this.initialEqFilterInputR2 = 0.0;
+            this.panningDelayLineL = null;
+            this.panningDelayLineR = null;
             this.panningDelayPos = 0;
             this.panningVolumeL = 0.0;
             this.panningVolumeR = 0.0;
@@ -18055,8 +18077,9 @@ li.select2-results__option[role=group] > strong:hover {
         }
         allocateNecessaryBuffers(synth, instrument, samplesPerTick) {
             if (effectsIncludePanning(instrument.effects)) {
-                if (this.panningDelayLine == null || this.panningDelayLine.length < synth.panningDelayBufferSize) {
-                    this.panningDelayLine = new Float32Array(synth.panningDelayBufferSize);
+                if (this.panningDelayLineL == null || this.panningDelayLineL.length < synth.panningDelayBufferSize || this.panningDelayLineR == null || this.panningDelayLineR.length < synth.panningDelayBufferSize) {
+                    this.panningDelayLineL = new Float32Array(synth.panningDelayBufferSize);
+                    this.panningDelayLineR = new Float32Array(synth.panningDelayBufferSize);
                 }
             }
             if (effectsIncludeChorus(instrument.effects)) {
@@ -18095,24 +18118,35 @@ li.select2-results__option[role=group] > strong:hover {
             }
         }
         deactivate() {
-            this.bitcrusherPrevInput = 0.0;
-            this.bitcrusherCurrentOutput = 0.0;
+            this.bitcrusherPrevInputL = 0.0;
+            this.bitcrusherPrevInputR = 0.0;
+            this.bitcrusherCurrentOutputL = 0.0;
+            this.bitcrusherCurrentOutputR = 0.0;
             this.bitcrusherPhase = 1.0;
             for (let i = 0; i < this.eqFilterCount; i++) {
-                this.eqFilters[i].resetOutput();
+                this.eqFiltersL[i].resetOutput();
+                this.eqFiltersR[i].resetOutput();
             }
             this.eqFilterCount = 0;
-            this.initialEqFilterInput1 = 0.0;
-            this.initialEqFilterInput2 = 0.0;
-            this.distortionFractionalInput1 = 0.0;
-            this.distortionFractionalInput2 = 0.0;
-            this.distortionFractionalInput3 = 0.0;
+            this.initialEqFilterInputL1 = 0.0;
+            this.initialEqFilterInputR1 = 0.0;
+            this.initialEqFilterInputL2 = 0.0;
+            this.initialEqFilterInputR2 = 0.0;
+            this.distortionFractionalInputL1 = 0.0;
+            this.distortionFractionalInputL2 = 0.0;
+            this.distortionFractionalInputL3 = 0.0;
+            this.distortionFractionalInputR1 = 0.0;
+            this.distortionFractionalInputR2 = 0.0;
+            this.distortionFractionalInputR3 = 0.0;
             this.distortionPrevInput = 0.0;
             this.distortionNextOutput = 0.0;
             this.panningDelayPos = 0;
-            if (this.panningDelayLine != null)
-                for (let i = 0; i < this.panningDelayLine.length; i++)
-                    this.panningDelayLine[i] = 0.0;
+            if (this.panningDelayLineL != null)
+                for (let i = 0; i < this.panningDelayLineL.length; i++)
+                    this.panningDelayLineL[i] = 0.0;
+            if (this.panningDelayLineR != null)
+                for (let i = 0; i < this.panningDelayLineR.length; i++)
+                    this.panningDelayLineR[i] = 0.0;
             this.echoDelayOffsetEnd = null;
             this.echoShelfSampleL = 0.0;
             this.echoShelfSampleR = 0.0;
@@ -18253,17 +18287,23 @@ li.select2-results__option[role=group] > strong:hover {
                     let endPoint = eqFilterSettingsEnd.controlPoints[0];
                     startPoint.toCoefficients(Synth.tempFilterStartCoefficients, samplesPerSecond, 1.0, 1.0);
                     endPoint.toCoefficients(Synth.tempFilterEndCoefficients, samplesPerSecond, 1.0, 1.0);
-                    if (this.eqFilters.length < 1)
-                        this.eqFilters[0] = new DynamicBiquadFilter();
-                    this.eqFilters[0].loadCoefficientsWithGradient(Synth.tempFilterStartCoefficients, Synth.tempFilterEndCoefficients, 1.0 / roundedSamplesPerTick, startPoint.type == 0);
+                    if (this.eqFiltersL.length < 1)
+                        this.eqFiltersL[0] = new DynamicBiquadFilter();
+                    if (this.eqFiltersR.length < 1)
+                        this.eqFiltersR[0] = new DynamicBiquadFilter();
+                    this.eqFiltersL[0].loadCoefficientsWithGradient(Synth.tempFilterStartCoefficients, Synth.tempFilterEndCoefficients, 1.0 / roundedSamplesPerTick, startPoint.type == 0);
+                    this.eqFiltersR[0].loadCoefficientsWithGradient(Synth.tempFilterStartCoefficients, Synth.tempFilterEndCoefficients, 1.0 / roundedSamplesPerTick, startPoint.type == 0);
                 }
                 else {
                     eqFilterSettingsStart.convertLegacySettingsForSynth(startSimpleFreq, startSimpleGain, true);
                     startPoint = eqFilterSettingsStart.controlPoints[0];
                     startPoint.toCoefficients(Synth.tempFilterStartCoefficients, samplesPerSecond, 1.0, 1.0);
-                    if (this.eqFilters.length < 1)
-                        this.eqFilters[0] = new DynamicBiquadFilter();
-                    this.eqFilters[0].loadCoefficientsWithGradient(Synth.tempFilterStartCoefficients, Synth.tempFilterStartCoefficients, 1.0 / roundedSamplesPerTick, startPoint.type == 0);
+                    if (this.eqFiltersL.length < 1)
+                        this.eqFiltersL[0] = new DynamicBiquadFilter();
+                    if (this.eqFiltersR.length < 1)
+                        this.eqFiltersR[0] = new DynamicBiquadFilter();
+                    this.eqFiltersL[0].loadCoefficientsWithGradient(Synth.tempFilterStartCoefficients, Synth.tempFilterStartCoefficients, 1.0 / roundedSamplesPerTick, startPoint.type == 0);
+                    this.eqFiltersR[0].loadCoefficientsWithGradient(Synth.tempFilterStartCoefficients, Synth.tempFilterStartCoefficients, 1.0 / roundedSamplesPerTick, startPoint.type == 0);
                 }
                 eqFilterVolume *= startPoint.getVolumeCompensationMult();
                 this.eqFilterCount = 1;
@@ -18279,9 +18319,12 @@ li.select2-results__option[role=group] > strong:hover {
                     }
                     startPoint.toCoefficients(Synth.tempFilterStartCoefficients, samplesPerSecond, 1.0, 1.0);
                     endPoint.toCoefficients(Synth.tempFilterEndCoefficients, samplesPerSecond, 1.0, 1.0);
-                    if (this.eqFilters.length <= i)
-                        this.eqFilters[i] = new DynamicBiquadFilter();
-                    this.eqFilters[i].loadCoefficientsWithGradient(Synth.tempFilterStartCoefficients, Synth.tempFilterEndCoefficients, 1.0 / roundedSamplesPerTick, startPoint.type == 0);
+                    if (this.eqFiltersL.length <= i)
+                        this.eqFiltersL[i] = new DynamicBiquadFilter();
+                    if (this.eqFiltersR.length <= i)
+                        this.eqFiltersR[i] = new DynamicBiquadFilter();
+                    this.eqFiltersL[i].loadCoefficientsWithGradient(Synth.tempFilterStartCoefficients, Synth.tempFilterEndCoefficients, 1.0 / roundedSamplesPerTick, startPoint.type == 0);
+                    this.eqFiltersR[i].loadCoefficientsWithGradient(Synth.tempFilterStartCoefficients, Synth.tempFilterEndCoefficients, 1.0 / roundedSamplesPerTick, startPoint.type == 0);
                     eqFilterVolume *= startPoint.getVolumeCompensationMult();
                 }
                 this.eqFilterCount = eqFilterSettings.controlPointCount;
@@ -19118,7 +19161,8 @@ li.select2-results__option[role=group] > strong:hover {
             this.metronomePrevAmplitude = 0.0;
             this.metronomeFilter = 0.0;
             this.limit = 0.0;
-            this.tempMonoInstrumentSampleBuffer = null;
+            this.tempInstrumentSampleBufferL = null;
+            this.tempInstrumentSampleBufferR = null;
             this.audioCtx = null;
             this.scriptNode = null;
             this.audioProcessCallback = (audioProcessingEvent) => {
@@ -19473,8 +19517,11 @@ li.select2-results__option[role=group] > strong:hover {
                 }
             }
             this.syncSongState();
-            if (this.tempMonoInstrumentSampleBuffer == null || this.tempMonoInstrumentSampleBuffer.length < outputBufferLength) {
-                this.tempMonoInstrumentSampleBuffer = new Float32Array(outputBufferLength);
+            if (this.tempInstrumentSampleBufferL == null || this.tempInstrumentSampleBufferL.length < outputBufferLength) {
+                this.tempInstrumentSampleBufferL = new Float32Array(outputBufferLength);
+            }
+            if (this.tempInstrumentSampleBufferR == null || this.tempInstrumentSampleBufferR.length < outputBufferLength) {
+                this.tempInstrumentSampleBufferR = new Float32Array(outputBufferLength);
             }
             const volume = +this.volume;
             const limitDecay = 1.0 - Math.pow(0.5, this.song.limitDecay / this.samplesPerSecond);
@@ -20032,7 +20079,6 @@ li.select2-results__option[role=group] > strong:hover {
             }
         }
         determineCurrentActiveTones(song, channelIndex, samplesPerTick, playSong) {
-            var _a, _b;
             const channel = song.channels[channelIndex];
             const channelState = this.channels[channelIndex];
             const pattern = song.getPattern(channelIndex, this.bar);
@@ -20272,11 +20318,11 @@ li.select2-results__option[role=group] > strong:hover {
                             tone.passedEndOfNote = false;
                             tone.forceContinueAtStart = forceContinueAtStart;
                             tone.forceContinueAtEnd = forceContinueAtEnd;
-                            if (!((_a = tone.prevNote) === null || _a === void 0 ? void 0 : _a.originalPitch)) {
-                                tone.note.originalPitch = note.pitches[0];
-                            }
-                            else if (tone.prevNote.originalPitch && forceContinueAtStart) {
+                            if (tone.prevNote && ((tone.prevNote.originalPitch && forceContinueAtStart) || (transition.continues || transition.slides))) {
                                 tone.note.originalPitch = tone.prevNote.originalPitch;
+                            }
+                            else {
+                                tone.note.originalPitch = note.pitches[0];
                             }
                             this.computeTone(song, channelIndex, samplesPerTick, tone, false, false);
                         }
@@ -20352,11 +20398,11 @@ li.select2-results__option[role=group] > strong:hover {
                                 tone.passedEndOfNote = passedEndOfNote;
                                 tone.forceContinueAtStart = forceContinueAtStart && prevNoteForThisTone != null;
                                 tone.forceContinueAtEnd = forceContinueAtEnd && nextNoteForThisTone != null;
-                                if (!((_b = tone.prevNote) === null || _b === void 0 ? void 0 : _b.originalPitch)) {
-                                    tone.note.originalPitch = note.pitches[0];
-                                }
-                                else if (tone.prevNote.originalPitch && forceContinueAtStart) {
+                                if (tone.prevNote && ((tone.prevNote.originalPitch && forceContinueAtStart) || (transition.continues || transition.slides))) {
                                     tone.note.originalPitch = tone.prevNote.originalPitch;
+                                }
+                                else {
+                                    tone.note.originalPitch = note.pitches[i];
                                 }
                                 this.computeTone(song, channelIndex, samplesPerTick, tone, false, false);
                             }
@@ -21388,7 +21434,8 @@ li.select2-results__option[role=group] > strong:hover {
         }
         static loopableChipSynth(synth, bufferIndex, roundedSamplesPerTick, tone, instrumentState) {
             const aliases = (effectsIncludeDistortion(instrumentState.effects) && instrumentState.aliases);
-            const data = synth.tempMonoInstrumentSampleBuffer;
+            const dataL = synth.tempInstrumentSampleBufferL;
+            const dataR = synth.tempInstrumentSampleBufferR;
             const wave = instrumentState.wave;
             const volumeScale = instrumentState.volumeScale;
             const waveLength = (aliases && instrumentState.type == 9) ? wave.length : wave.length - 1;
@@ -21683,7 +21730,8 @@ li.select2-results__option[role=group] > strong:hover {
                 phaseDeltaB *= phaseDeltaScaleB;
                 const output = sample * expression;
                 expression += expressionDelta;
-                data[sampleIndex] += output;
+                dataL[sampleIndex] += output * 0.5;
+                dataR[sampleIndex] += output * 0.5;
             }
             tone.phases[0] = phaseA / waveLength;
             tone.phases[1] = phaseB / waveLength;
@@ -21703,49 +21751,24 @@ li.select2-results__option[role=group] > strong:hover {
             tone.initialNoteFilterInput2 = initialFilterInput2;
         }
         static soundfontSynth(synth, bufferIndex, roundedSamplesPerTick, tone, instrumentState) {
-            var _a;
+            var _a, _b, _c, _d;
             const sf = Soundfont.loadedSoundfonts[instrumentState.soundfontIndex];
+            let pitch = 0;
             let gens;
             if (tone.note && tone.note.originalPitch) {
                 gens = instrumentState.soundfontGens.get(tone.note.originalPitch);
+                pitch = tone.note.originalPitch;
             }
             else {
                 gens = instrumentState.soundfontGens.get(tone.pitches[0]);
+                pitch = tone.pitches[0];
             }
-            if (!gens)
+            if (!gens || gens.length == 0)
                 return;
-            const currPresetGens = (gens.length > 0) ? gens[0] : null;
-            if (!currPresetGens)
-                return;
-            const currInstGens = (currPresetGens.instGenerators.length > 0) ? gens[0].instGenerators[0] : null;
-            if (!currInstGens)
-                return;
-            const sIndex = Soundfont.getGenAmtFromOp(currInstGens, currPresetGens, GENERATORS.sampleID.op);
-            const loopMode = Soundfont.getGenAmtFromOp(currInstGens, currPresetGens, GENERATORS.sampleModes.op);
-            const currSample = sf.chipWaves[sIndex];
-            const sInfo = sf.sampleInfo[sIndex];
-            if (!currSample)
-                return;
-            let originalPitch = (_a = Soundfont.getGenAmtFromOp(currInstGens, currPresetGens, GENERATORS.overridingRootKey.op)) !== null && _a !== void 0 ? _a : sInfo.originalPitch;
-            const pitchCorrectionCourse = Soundfont.getGenAmtFromOp(currInstGens, currPresetGens, GENERATORS.coarseTune.op);
-            const pitchCorrectionFine = Soundfont.getGenAmtFromOp(currInstGens, currPresetGens, GENERATORS.fineTune.op);
-            const scaleTuning = Soundfont.getGenAmtFromOp(currInstGens, currPresetGens, GENERATORS.scaleTuning.op);
-            originalPitch = (originalPitch == 65535) ? sInfo.originalPitch : originalPitch;
-            const rootFreq = Instrument.frequencyFromPitch(originalPitch - pitchCorrectionCourse - pitchCorrectionFine / 100.0 - sInfo.pCorrection / 100.0);
-            const waveLength = currSample.length;
-            const loopStart = sInfo.loopStart;
-            const loopEnd = sInfo.loopEnd;
-            const loopRange = loopEnd - loopStart;
-            const canLoop = (loopMode === 1 || loopMode === 3) && loopStart >= 0 && loopEnd > loopStart && loopEnd <= waveLength;
-            const applyFilters = Synth.applyFilters;
             let expression = +tone.expression;
             const expressionDelta = +tone.expressionDelta;
-            let initialFilterInput1 = +tone.initialNoteFilterInput1;
-            let initialFilterInput2 = +tone.initialNoteFilterInput2;
-            const filters = tone.noteFilters;
-            const filterCount = tone.noteFilterCount | 0;
-            const volumeScale = instrumentState.volumeScale;
-            const readSample = (position) => {
+            const phaseDeltaScale = +tone.phaseDeltaScales[0];
+            const readSample = (position, currSample, canLoop, loopEnd, loopStart) => {
                 var _a, _b;
                 const index = Math.floor(position);
                 const fraction = position - index;
@@ -21756,36 +21779,75 @@ li.select2-results__option[role=group] > strong:hover {
                 const b = (_b = currSample[nextIndex]) !== null && _b !== void 0 ? _b : a;
                 return a + (b - a) * fraction;
             };
-            let phase = tone.phases[0] * waveLength;
-            let phaseDelta = tone.phaseDeltas[0] * sInfo.sampleRate / rootFreq * Math.pow(2, (tone.pitches[0] - originalPitch) * (scaleTuning - 100) / 1200);
-            const phaseDeltaScale = +tone.phaseDeltaScales[0];
-            const data = synth.tempMonoInstrumentSampleBuffer;
-            const stopIndex = bufferIndex + roundedSamplesPerTick;
-            for (let sampleIndex = bufferIndex; sampleIndex < stopIndex; sampleIndex++) {
-                let inputSample = 0;
-                if (canLoop && phase >= loopEnd) {
-                    phase = loopStart + ((phase - loopStart) % loopRange);
+            for (const presetGens of gens) {
+                const currInstGens = (presetGens.instGenerators.length > 0) ? presetGens.instGenerators : null;
+                if (!currInstGens)
+                    continue;
+                for (const instGens of presetGens.instGenerators) {
+                    let layerExpression = expression;
+                    const sIndex = Soundfont.getGenAmtFromOp(instGens, presetGens, GENERATORS.sampleID.op);
+                    const loopMode = Soundfont.getGenAmtFromOp(instGens, presetGens, GENERATORS.sampleModes.op);
+                    const currSample = sf.chipWaves[sIndex];
+                    const sInfo = sf.sampleInfo[sIndex];
+                    const sampleKey = `${presetGens.index}:${instGens.index}`;
+                    if (!currSample || !sInfo)
+                        continue;
+                    let originalPitch = (_a = Soundfont.getGenAmtFromOp(instGens, presetGens, GENERATORS.overridingRootKey.op)) !== null && _a !== void 0 ? _a : sInfo.originalPitch;
+                    const pitchCorrectionCourse = Soundfont.getGenAmtFromOp(instGens, presetGens, GENERATORS.coarseTune.op);
+                    const pitchCorrectionFine = Soundfont.getGenAmtFromOp(instGens, presetGens, GENERATORS.fineTune.op);
+                    const scaleTuning = Soundfont.getGenAmtFromOp(instGens, presetGens, GENERATORS.scaleTuning.op);
+                    originalPitch = (originalPitch == 65535) ? sInfo.originalPitch : originalPitch;
+                    const rootFreq = Instrument.frequencyFromPitch(originalPitch - pitchCorrectionCourse - pitchCorrectionFine / 100.0 - sInfo.pCorrection / 100.0);
+                    const waveLength = currSample.length;
+                    const loopStart = sInfo.loopStart;
+                    const loopEnd = sInfo.loopEnd;
+                    const loopRange = loopEnd - loopStart;
+                    const canLoop = (loopMode === 1 || loopMode === 3) && loopStart >= 0 && loopEnd > loopStart && loopEnd <= waveLength;
+                    const applyFilters = Synth.applyFilters;
+                    let initialFilterInput1 = ((_b = tone.sfInitialNoteFilterInput1.get(sampleKey)) !== null && _b !== void 0 ? _b : 0);
+                    let initialFilterInput2 = ((_c = tone.sfInitialNoteFilterInput2.get(sampleKey)) !== null && _c !== void 0 ? _c : 0);
+                    const filters = tone.noteFilters;
+                    const filterCount = tone.noteFilterCount | 0;
+                    const volumeScale = instrumentState.volumeScale;
+                    const pitchScale = Math.pow(2, (pitch - originalPitch) * (scaleTuning - 100) / 1200);
+                    const sampleRateScale = sInfo.sampleRate / rootFreq;
+                    let phase = ((_d = tone.sfPhases.get(sampleKey)) !== null && _d !== void 0 ? _d : 0) * waveLength;
+                    let phaseDelta = tone.phaseDeltas[0] * sampleRateScale * pitchScale;
+                    const dataL = synth.tempInstrumentSampleBufferL;
+                    const dataR = synth.tempInstrumentSampleBufferR;
+                    const stopIndex = bufferIndex + roundedSamplesPerTick;
+                    const panAmt = Soundfont.getGenAmtFromOp(instGens, presetGens, GENERATORS.pan.op);
+                    const attenuationScale = Math.pow(10, -Soundfont.getGenAmtFromOp(instGens, presetGens, GENERATORS.initialAttenuation.op) / 200);
+                    for (let sampleIndex = bufferIndex; sampleIndex < stopIndex; sampleIndex++) {
+                        let inputSample = 0;
+                        if (canLoop && phase >= loopEnd) {
+                            phase = loopStart + ((phase - loopStart) % loopRange);
+                        }
+                        inputSample = readSample(phase, currSample, canLoop, loopEnd, loopStart);
+                        const sample = applyFilters(inputSample * volumeScale, initialFilterInput1, initialFilterInput2, filterCount, filters);
+                        const output = sample * layerExpression * attenuationScale;
+                        const pan = Math.max(-500, Math.min(500, panAmt)) / 500;
+                        const angle = (pan + 1) * Math.PI / 4;
+                        dataL[sampleIndex] += output * Math.cos(angle);
+                        dataR[sampleIndex] += output * Math.sin(angle);
+                        initialFilterInput2 = initialFilterInput1;
+                        initialFilterInput1 = inputSample * volumeScale;
+                        phase += phaseDelta;
+                        phaseDelta *= phaseDeltaScale;
+                        layerExpression += expressionDelta;
+                    }
+                    tone.sfPhases.set(sampleKey, phase / waveLength);
+                    synth.sanitizeFilters(filters);
+                    tone.sfInitialNoteFilterInput1.set(sampleKey, initialFilterInput1);
+                    tone.sfInitialNoteFilterInput2.set(sampleKey, initialFilterInput1);
                 }
-                inputSample = readSample(phase);
-                const sample = applyFilters(inputSample * volumeScale, initialFilterInput1, initialFilterInput2, filterCount, filters);
-                const output = sample * expression;
-                data[sampleIndex] += output;
-                initialFilterInput2 = initialFilterInput1;
-                initialFilterInput1 = inputSample * volumeScale;
-                phase += phaseDelta;
-                phaseDelta *= phaseDeltaScale;
-                expression += expressionDelta;
             }
-            tone.phases[0] = phase / waveLength;
-            tone.phaseDeltas[0] = phaseDelta * rootFreq / sInfo.sampleRate / Math.pow(2, (tone.pitches[0] - originalPitch) * (scaleTuning - 100) / 1200);
-            tone.expression = expression;
-            synth.sanitizeFilters(filters);
-            tone.initialNoteFilterInput1 = initialFilterInput1;
-            tone.initialNoteFilterInput2 = initialFilterInput2;
+            tone.expression += expressionDelta * roundedSamplesPerTick;
         }
         static chipSynth(synth, bufferIndex, roundedSamplesPerTick, tone, instrumentState) {
             const aliases = (effectsIncludeDistortion(instrumentState.effects) && instrumentState.aliases);
-            const data = synth.tempMonoInstrumentSampleBuffer;
+            const dataL = synth.tempInstrumentSampleBufferL;
+            const dataR = synth.tempInstrumentSampleBufferR;
             const wave = instrumentState.wave;
             const volumeScale = instrumentState.volumeScale;
             const waveLength = (aliases && instrumentState.type == 9) ? wave.length : wave.length - 1;
@@ -21855,7 +21917,8 @@ li.select2-results__option[role=group] > strong:hover {
                 phaseDeltaB *= phaseDeltaScaleB;
                 const output = sample * expression;
                 expression += expressionDelta;
-                data[sampleIndex] += output;
+                dataL[sampleIndex] += output * 0.5;
+                dataR[sampleIndex] += output * 0.5;
             }
             tone.phases[0] = phaseA / waveLength;
             tone.phases[1] = phaseB / waveLength;
@@ -21867,7 +21930,8 @@ li.select2-results__option[role=group] > strong:hover {
             tone.initialNoteFilterInput2 = initialFilterInput2;
         }
         static harmonicsSynth(synth, bufferIndex, roundedSamplesPerTick, tone, instrumentState) {
-            const data = synth.tempMonoInstrumentSampleBuffer;
+            const dataL = synth.tempInstrumentSampleBufferL;
+            const dataR = synth.tempInstrumentSampleBufferR;
             const wave = instrumentState.wave;
             const waveLength = wave.length - 1;
             const unisonSign = tone.specialIntervalExpressionMult * instrumentState.unisonSign;
@@ -21922,7 +21986,8 @@ li.select2-results__option[role=group] > strong:hover {
                 phaseDeltaB *= phaseDeltaScaleB;
                 const output = sample * expression;
                 expression += expressionDelta;
-                data[sampleIndex] += output;
+                dataL[sampleIndex] += output * 0.5;
+                dataR[sampleIndex] += output * 0.5;
             }
             tone.phases[0] = phaseA / waveLength;
             tone.phases[1] = phaseB / waveLength;
@@ -22105,10 +22170,11 @@ li.select2-results__option[role=group] > strong:hover {
                 let effectsSource = "return (synth, outputDataL, outputDataR, bufferIndex, runLength, instrumentState) => {";
                 const usesDelays = usesChorus || usesReverb || usesEcho;
                 effectsSource += `
-				const tempMonoInstrumentSampleBuffer = synth.tempMonoInstrumentSampleBuffer;
-				
+                const tempInstrumentSampleBufferL = synth.tempInstrumentSampleBufferL;
+                const tempInstrumentSampleBufferR = synth.tempInstrumentSampleBufferR;
 				let mixVolume = +instrumentState.mixVolume;
-				const mixVolumeDelta = +instrumentState.mixVolumeDelta;`;
+				const mixVolumeDelta = +instrumentState.mixVolumeDelta;
+                `;
                 if (usesDelays) {
                     effectsSource += `
 				
@@ -22138,17 +22204,24 @@ li.select2-results__option[role=group] > strong:hover {
 				const distortionPrevOutputWeight2 = 1.0 - distortionNextOutputWeight2;
 				const distortionPrevOutputWeight3 = 1.0 - distortionNextOutputWeight3;
 				
-				let distortionFractionalInput1 = +instrumentState.distortionFractionalInput1;
-				let distortionFractionalInput2 = +instrumentState.distortionFractionalInput2;
-				let distortionFractionalInput3 = +instrumentState.distortionFractionalInput3;
-				let distortionPrevInput = +instrumentState.distortionPrevInput;
-				let distortionNextOutput = +instrumentState.distortionNextOutput;`;
+                let distortionFractionalInputL1 = +instrumentState.distortionFractionalInputL1;
+ 				let distortionFractionalInputL2 = +instrumentState.distortionFractionalInputL2;
+                let distortionFractionalInputL3 = +instrumentState.distortionFractionalInputL3;
+                let distortionFractionalInputR1 = +instrumentState.distortionFractionalInputR1;
+                let distortionFractionalInputR2 = +instrumentState.distortionFractionalInputR2;
+                let distortionFractionalInputR3 = +instrumentState.distortionFractionalInputR3;
+                let distortionPrevInputL = +instrumentState.distortionPrevInputL;
+                let distortionPrevInputR = +instrumentState.distortionPrevInputR;
+                let distortionNextOutputL = +instrumentState.distortionNextOutputL;
+                let distortionNextOutputR = +instrumentState.distortionNextOutputR;`;
                 }
                 if (usesBitcrusher) {
                     effectsSource += `
 				
-				let bitcrusherPrevInput = +instrumentState.bitcrusherPrevInput;
-				let bitcrusherCurrentOutput = +instrumentState.bitcrusherCurrentOutput;
+                let bitcrusherPrevInputL = +instrumentState.bitcrusherPrevInputL;
+                let bitcrusherPrevInputR = +instrumentState.bitcrusherPrevInputR;
+                let bitcrusherCurrentOutputL = +instrumentState.bitcrusherCurrentOutputL;
+                let bitcrusherCurrentOutputR = +instrumentState.bitcrusherCurrentOutputR;
 				let bitcrusherPhase = +instrumentState.bitcrusherPhase;
 				let bitcrusherPhaseDelta = +instrumentState.bitcrusherPhaseDelta;
 				const bitcrusherPhaseDeltaScale = +instrumentState.bitcrusherPhaseDeltaScale;
@@ -22160,11 +22233,14 @@ li.select2-results__option[role=group] > strong:hover {
                 if (usesEqFilter) {
                     effectsSource += `
 				
-				let filters = instrumentState.eqFilters;
-				const filterCount = instrumentState.eqFilterCount|0;
-				let initialFilterInput1 = +instrumentState.initialEqFilterInput1;
-				let initialFilterInput2 = +instrumentState.initialEqFilterInput2;
-				const applyFilters = Synth.applyFilters;`;
+                let filtersL = instrumentState.eqFiltersL;
+                let filtersR = instrumentState.eqFiltersR;
+                const filterCount = instrumentState.eqFilterCount|0;
+                let initialFilterInputL1 = +instrumentState.initialEqFilterInputL1;
+                let initialFilterInputR1 = +instrumentState.initialEqFilterInputR1;
+                let initialFilterInputL2 = +instrumentState.initialEqFilterInputL2;
+                let initialFilterInputR2 = +instrumentState.initialEqFilterInputR2;
+                const applyFilters = Synth.applyFilters;`;
                 }
                 effectsSource += `
 				
@@ -22174,7 +22250,8 @@ li.select2-results__option[role=group] > strong:hover {
                     effectsSource += `
 				
 				const panningMask = synth.panningDelayBufferMask >>> 0;
-				const panningDelayLine = instrumentState.panningDelayLine;
+                const panningDelayLineL = instrumentState.panningDelayLineL;
+                const panningDelayLineR = instrumentState.panningDelayLineR;
 				let panningDelayPos = instrumentState.panningDelayPos & panningMask;
 				let   panningVolumeL      = +instrumentState.panningVolumeL;
 				let   panningVolumeR      = +instrumentState.panningVolumeR;
@@ -22199,29 +22276,29 @@ li.select2-results__option[role=group] > strong:hover {
 				let chorusCombinedMult = +instrumentState.chorusCombinedMult;
 				const chorusCombinedMultDelta = +instrumentState.chorusCombinedMultDelta;
 				
-				const chorusDuration = +beepbox.Config.chorusPeriodSeconds;
+				const chorusDuration = +Config.chorusPeriodSeconds;
 				const chorusAngle = Math.PI * 2.0 / (chorusDuration * synth.samplesPerSecond);
-				const chorusRange = synth.samplesPerSecond * beepbox.Config.chorusDelayRange;
-				const chorusOffset0 = synth.chorusDelayBufferSize - beepbox.Config.chorusDelayOffsets[0][0] * chorusRange;
-				const chorusOffset1 = synth.chorusDelayBufferSize - beepbox.Config.chorusDelayOffsets[0][1] * chorusRange;
-				const chorusOffset2 = synth.chorusDelayBufferSize - beepbox.Config.chorusDelayOffsets[0][2] * chorusRange;
-				const chorusOffset3 = synth.chorusDelayBufferSize - beepbox.Config.chorusDelayOffsets[1][0] * chorusRange;
-				const chorusOffset4 = synth.chorusDelayBufferSize - beepbox.Config.chorusDelayOffsets[1][1] * chorusRange;
-				const chorusOffset5 = synth.chorusDelayBufferSize - beepbox.Config.chorusDelayOffsets[1][2] * chorusRange;
+				const chorusRange = synth.samplesPerSecond * Config.chorusDelayRange;
+				const chorusOffset0 = synth.chorusDelayBufferSize - Config.chorusDelayOffsets[0][0] * chorusRange;
+				const chorusOffset1 = synth.chorusDelayBufferSize - Config.chorusDelayOffsets[0][1] * chorusRange;
+				const chorusOffset2 = synth.chorusDelayBufferSize - Config.chorusDelayOffsets[0][2] * chorusRange;
+				const chorusOffset3 = synth.chorusDelayBufferSize - Config.chorusDelayOffsets[1][0] * chorusRange;
+				const chorusOffset4 = synth.chorusDelayBufferSize - Config.chorusDelayOffsets[1][1] * chorusRange;
+				const chorusOffset5 = synth.chorusDelayBufferSize - Config.chorusDelayOffsets[1][2] * chorusRange;
 				let chorusPhase = instrumentState.chorusPhase % (Math.PI * 2.0);
-				let chorusTap0Index = chorusDelayPos + chorusOffset0 - chorusRange * Math.sin(chorusPhase + beepbox.Config.chorusPhaseOffsets[0][0]);
-				let chorusTap1Index = chorusDelayPos + chorusOffset1 - chorusRange * Math.sin(chorusPhase + beepbox.Config.chorusPhaseOffsets[0][1]);
-				let chorusTap2Index = chorusDelayPos + chorusOffset2 - chorusRange * Math.sin(chorusPhase + beepbox.Config.chorusPhaseOffsets[0][2]);
-				let chorusTap3Index = chorusDelayPos + chorusOffset3 - chorusRange * Math.sin(chorusPhase + beepbox.Config.chorusPhaseOffsets[1][0]);
-				let chorusTap4Index = chorusDelayPos + chorusOffset4 - chorusRange * Math.sin(chorusPhase + beepbox.Config.chorusPhaseOffsets[1][1]);
-				let chorusTap5Index = chorusDelayPos + chorusOffset5 - chorusRange * Math.sin(chorusPhase + beepbox.Config.chorusPhaseOffsets[1][2]);
+				let chorusTap0Index = chorusDelayPos + chorusOffset0 - chorusRange * Math.sin(chorusPhase + Config.chorusPhaseOffsets[0][0]);
+				let chorusTap1Index = chorusDelayPos + chorusOffset1 - chorusRange * Math.sin(chorusPhase + Config.chorusPhaseOffsets[0][1]);
+				let chorusTap2Index = chorusDelayPos + chorusOffset2 - chorusRange * Math.sin(chorusPhase + Config.chorusPhaseOffsets[0][2]);
+				let chorusTap3Index = chorusDelayPos + chorusOffset3 - chorusRange * Math.sin(chorusPhase + Config.chorusPhaseOffsets[1][0]);
+				let chorusTap4Index = chorusDelayPos + chorusOffset4 - chorusRange * Math.sin(chorusPhase + Config.chorusPhaseOffsets[1][1]);
+				let chorusTap5Index = chorusDelayPos + chorusOffset5 - chorusRange * Math.sin(chorusPhase + Config.chorusPhaseOffsets[1][2]);
 				chorusPhase += chorusAngle * runLength;
-				const chorusTap0End = chorusDelayPos + chorusOffset0 - chorusRange * Math.sin(chorusPhase + beepbox.Config.chorusPhaseOffsets[0][0]) + runLength;
-				const chorusTap1End = chorusDelayPos + chorusOffset1 - chorusRange * Math.sin(chorusPhase + beepbox.Config.chorusPhaseOffsets[0][1]) + runLength;
-				const chorusTap2End = chorusDelayPos + chorusOffset2 - chorusRange * Math.sin(chorusPhase + beepbox.Config.chorusPhaseOffsets[0][2]) + runLength;
-				const chorusTap3End = chorusDelayPos + chorusOffset3 - chorusRange * Math.sin(chorusPhase + beepbox.Config.chorusPhaseOffsets[1][0]) + runLength;
-				const chorusTap4End = chorusDelayPos + chorusOffset4 - chorusRange * Math.sin(chorusPhase + beepbox.Config.chorusPhaseOffsets[1][1]) + runLength;
-				const chorusTap5End = chorusDelayPos + chorusOffset5 - chorusRange * Math.sin(chorusPhase + beepbox.Config.chorusPhaseOffsets[1][2]) + runLength;
+				const chorusTap0End = chorusDelayPos + chorusOffset0 - chorusRange * Math.sin(chorusPhase + Config.chorusPhaseOffsets[0][0]) + runLength;
+				const chorusTap1End = chorusDelayPos + chorusOffset1 - chorusRange * Math.sin(chorusPhase + Config.chorusPhaseOffsets[0][1]) + runLength;
+				const chorusTap2End = chorusDelayPos + chorusOffset2 - chorusRange * Math.sin(chorusPhase + Config.chorusPhaseOffsets[0][2]) + runLength;
+				const chorusTap3End = chorusDelayPos + chorusOffset3 - chorusRange * Math.sin(chorusPhase + Config.chorusPhaseOffsets[1][0]) + runLength;
+				const chorusTap4End = chorusDelayPos + chorusOffset4 - chorusRange * Math.sin(chorusPhase + Config.chorusPhaseOffsets[1][1]) + runLength;
+				const chorusTap5End = chorusDelayPos + chorusOffset5 - chorusRange * Math.sin(chorusPhase + Config.chorusPhaseOffsets[1][2]) + runLength;
 				const chorusTap0Delta = (chorusTap0End - chorusTap0Index) / runLength;
 				const chorusTap1Delta = (chorusTap1End - chorusTap1Index) / runLength;
 				const chorusTap2Delta = (chorusTap2End - chorusTap2Index) / runLength;
@@ -22231,7 +22308,6 @@ li.select2-results__option[role=group] > strong:hover {
                 }
                 if (usesEcho) {
                     effectsSource += `
-				
 				let echoMult = +instrumentState.echoMult;
 				const echoMultDelta = +instrumentState.echoMultDelta;
 				
@@ -22278,96 +22354,117 @@ li.select2-results__option[role=group] > strong:hover {
 				let reverbShelfPrevInput3 = +instrumentState.reverbShelfPrevInput3;`;
                 }
                 effectsSource += `
-				
 				const stopIndex = bufferIndex + runLength;
 				for (let sampleIndex = bufferIndex; sampleIndex < stopIndex; sampleIndex++) {
-					let sample = tempMonoInstrumentSampleBuffer[sampleIndex];
-					tempMonoInstrumentSampleBuffer[sampleIndex] = 0.0;`;
+                    let sampleL = tempInstrumentSampleBufferL[sampleIndex];
+                    let sampleR = tempInstrumentSampleBufferR[sampleIndex];
+                    tempInstrumentSampleBufferL[sampleIndex] = 0.0;
+                    tempInstrumentSampleBufferR[sampleIndex] = 0.0;`;
                 if (usesDistortion) {
                     effectsSource += `
-					
-					const distortionReverse = 1.0 - distortion;
-					const distortionNextInput = sample * distortionDrive;
-					sample = distortionNextOutput;
-					distortionNextOutput = distortionNextInput / (distortionReverse * Math.abs(distortionNextInput) + distortion);
-					distortionFractionalInput1 = distortionFractionalDelayG1 * distortionNextInput + distortionPrevInput - distortionFractionalDelayG1 * distortionFractionalInput1;
-					distortionFractionalInput2 = distortionFractionalDelayG2 * distortionNextInput + distortionPrevInput - distortionFractionalDelayG2 * distortionFractionalInput2;
-					distortionFractionalInput3 = distortionFractionalDelayG3 * distortionNextInput + distortionPrevInput - distortionFractionalDelayG3 * distortionFractionalInput3;
-					const distortionOutput1 = distortionFractionalInput1 / (distortionReverse * Math.abs(distortionFractionalInput1) + distortion);
-					const distortionOutput2 = distortionFractionalInput2 / (distortionReverse * Math.abs(distortionFractionalInput2) + distortion);
-					const distortionOutput3 = distortionFractionalInput3 / (distortionReverse * Math.abs(distortionFractionalInput3) + distortion);
-					distortionNextOutput += distortionOutput1 * distortionNextOutputWeight1 + distortionOutput2 * distortionNextOutputWeight2 + distortionOutput3 * distortionNextOutputWeight3;
-					sample += distortionOutput1 * distortionPrevOutputWeight1 + distortionOutput2 * distortionPrevOutputWeight2 + distortionOutput3 * distortionPrevOutputWeight3;
-					sample *= distortionOversampleCompensation;
-					distortionPrevInput = distortionNextInput;
-					distortion += distortionDelta;
-					distortionDrive += distortionDriveDelta;`;
+
+                    const distortionReverse = 1.0 - distortion;
+                    const distortionNextInputL = sampleL * distortionDrive;
+                    const distortionNextInputR = sampleR * distortionDrive;
+                    sampleL = distortionNextOutputL;
+                    sampleR = distortionNextOutputR;
+                    distortionNextOutputL = distortionNextInputL / (distortionReverse * Math.abs(distortionNextInputL) + distortion);
+                    distortionNextOutputR = distortionNextInputR / (distortionReverse * Math.abs(distortionNextInputR) + distortion);
+                    distortionFractionalInputL1 = distortionFractionalDelayG1 * distortionNextInputL + distortionPrevInputL - distortionFractionalDelayG1 * distortionFractionalInputL1;
+                    distortionFractionalInputL2 = distortionFractionalDelayG2 * distortionNextInputL + distortionPrevInputL - distortionFractionalDelayG2 * distortionFractionalInputL2;
+                    distortionFractionalInputL3 = distortionFractionalDelayG3 * distortionNextInputL + distortionPrevInputL - distortionFractionalDelayG3 * distortionFractionalInputL3;
+                    distortionFractionalInputR1 = distortionFractionalDelayG1 * distortionNextInputR + distortionPrevInputR - distortionFractionalDelayG1 * distortionFractionalInputR1;
+                    distortionFractionalInputR2 = distortionFractionalDelayG2 * distortionNextInputR + distortionPrevInputR - distortionFractionalDelayG2 * distortionFractionalInputR2;
+                    distortionFractionalInputR3 = distortionFractionalDelayG3 * distortionNextInputR + distortionPrevInputR - distortionFractionalDelayG3 * distortionFractionalInputR3;
+                    const distortionOutputL1 = distortionFractionalInputL1 / (distortionReverse * Math.abs(distortionFractionalInputL1) + distortion);
+                    const distortionOutputL2 = distortionFractionalInputL2 / (distortionReverse * Math.abs(distortionFractionalInputL2) + distortion);
+                    const distortionOutputL3 = distortionFractionalInputL3 / (distortionReverse * Math.abs(distortionFractionalInputL3) + distortion);
+                    const distortionOutputR1 = distortionFractionalInputR1 / (distortionReverse * Math.abs(distortionFractionalInputR1) + distortion);
+                    const distortionOutputR2 = distortionFractionalInputR2 / (distortionReverse * Math.abs(distortionFractionalInputR2) + distortion);
+                    const distortionOutputR3 = distortionFractionalInputR3 / (distortionReverse * Math.abs(distortionFractionalInputR3) + distortion);
+                    distortionNextOutputL += distortionOutputL1 * distortionNextOutputWeight1 + distortionOutputL2 * distortionNextOutputWeight2 + distortionOutputL3 * distortionNextOutputWeight3;
+                    distortionNextOutputR += distortionOutputR1 * distortionNextOutputWeight1 + distortionOutputR2 * distortionNextOutputWeight2 + distortionOutputR3 * distortionNextOutputWeight3;
+                    sampleL += distortionOutputL1 * distortionPrevOutputWeight1 + distortionOutputL2 * distortionPrevOutputWeight2 + distortionOutputL3 * distortionPrevOutputWeight3;
+                    sampleR += distortionOutputR1 * distortionPrevOutputWeight1 + distortionOutputR2 * distortionPrevOutputWeight2 + distortionOutputR3 * distortionPrevOutputWeight3;
+                    sampleL *= distortionOversampleCompensation;
+                    sampleR *= distortionOversampleCompensation;
+                    distortionPrevInputL = distortionNextInputL;
+                    distortionPrevInputR = distortionNextInputR;
+                    distortion += distortionDelta;
+                    distortionDrive += distortionDriveDelta;`;
                 }
                 if (usesBitcrusher) {
                     effectsSource += `
-					
-					bitcrusherPhase += bitcrusherPhaseDelta;
-					if (bitcrusherPhase < 1.0) {
-						bitcrusherPrevInput = sample;
-						sample = bitcrusherCurrentOutput;
-					} else {
-						bitcrusherPhase = bitcrusherPhase % 1.0;
-						const ratio = bitcrusherPhase / bitcrusherPhaseDelta;
-						
-						const lerpedInput = sample + (bitcrusherPrevInput - sample) * ratio;
-						bitcrusherPrevInput = sample;
-						
-						const bitcrusherWrapLevel = bitcrusherFoldLevel * 4.0;
-						const wrappedSample = (((lerpedInput + bitcrusherFoldLevel) % bitcrusherWrapLevel) + bitcrusherWrapLevel) % bitcrusherWrapLevel;
-						const foldedSample = bitcrusherFoldLevel - Math.abs(bitcrusherFoldLevel * 2.0 - wrappedSample);
-						const scaledSample = foldedSample / bitcrusherScale;
-						const oldValue = bitcrusherCurrentOutput;
-						const newValue = (((scaledSample > 0 ? scaledSample + 1 : scaledSample)|0)-.5) * bitcrusherScale;
-						
-						sample = oldValue + (newValue - oldValue) * ratio;
-						bitcrusherCurrentOutput = newValue;
-					}
-					bitcrusherPhaseDelta *= bitcrusherPhaseDeltaScale;
-					bitcrusherScale *= bitcrusherScaleScale;
-					bitcrusherFoldLevel *= bitcrusherFoldLevelScale;`;
+                    bitcrusherPhase += bitcrusherPhaseDelta;
+                        if (bitcrusherPhase < 1.0) {
+                            bitcrusherPrevInputL = sampleL;
+                            bitcrusherPrevInputR = sampleR;
+                            sampleL = bitcrusherCurrentOutputL;
+                            sampleR = bitcrusherCurrentOutputR;
+                        } else {
+                            bitcrusherPhase = bitcrusherPhase % 1.0;
+                            const ratio = bitcrusherPhase / bitcrusherPhaseDelta;
+                            const lerpedInputL = sampleL + (bitcrusherPrevInputL - sampleL) * ratio;
+                            const lerpedInputR = sampleR + (bitcrusherPrevInputR - sampleR) * ratio;
+                            bitcrusherPrevInputL = sampleL;
+                            bitcrusherPrevInputR = sampleR;
+                            const bitcrusherWrapLevel = bitcrusherFoldLevel * 4.0;
+                            const wrappedSampleL = (((lerpedInputL + bitcrusherFoldLevel) % bitcrusherWrapLevel) + bitcrusherWrapLevel) % bitcrusherWrapLevel;
+                            const wrappedSampleR = (((lerpedInputR + bitcrusherFoldLevel) % bitcrusherWrapLevel) + bitcrusherWrapLevel) % bitcrusherWrapLevel;
+                            const foldedSampleL = bitcrusherFoldLevel - Math.abs(bitcrusherFoldLevel * 2.0 - wrappedSampleL);
+                            const foldedSampleR = bitcrusherFoldLevel - Math.abs(bitcrusherFoldLevel * 2.0 - wrappedSampleR);
+                            const scaledSampleL = foldedSampleL / bitcrusherScale;
+                            const scaledSampleR = foldedSampleR / bitcrusherScale;
+                            const oldValueL = bitcrusherCurrentOutputL;
+                            const oldValueR = bitcrusherCurrentOutputR;
+                            const newValueL = (((scaledSampleL > 0 ? scaledSampleL + 1 : scaledSampleL)|0)-.5) * bitcrusherScale;
+                            const newValueR = (((scaledSampleR > 0 ? scaledSampleR + 1 : scaledSampleR)|0)-.5) * bitcrusherScale;
+                            sampleL = oldValueL + (newValueL - oldValueL) * ratio;
+                            sampleR = oldValueR + (newValueR - oldValueR) * ratio;
+                            bitcrusherCurrentOutputL = newValueL;
+                            bitcrusherCurrentOutputR = newValueR;
+                        }
+                        bitcrusherPhaseDelta *= bitcrusherPhaseDeltaScale;
+                        bitcrusherScale *= bitcrusherScaleScale;
+                        bitcrusherFoldLevel *= bitcrusherFoldLevelScale; `;
                 }
                 if (usesEqFilter) {
                     effectsSource += `
-					
-					const inputSample = sample;
-					sample = applyFilters(inputSample, initialFilterInput1, initialFilterInput2, filterCount, filters);
-					initialFilterInput2 = initialFilterInput1;
-					initialFilterInput1 = inputSample;`;
+
+                    const inputSampleL = sampleL;
+                    const inputSampleR = sampleR;
+                    sampleL = applyFilters(inputSampleL, initialFilterInputL1, initialFilterInputL2, filterCount, filtersL);
+                    sampleR = applyFilters(inputSampleR, initialFilterInputR1, initialFilterInputR2, filterCount, filtersR);
+                    initialFilterInputL2 = initialFilterInputL1;
+                    initialFilterInputR2 = initialFilterInputR1;
+                    initialFilterInputL1 = inputSampleL;
+                    initialFilterInputR1 = inputSampleR;`;
                 }
                 effectsSource += `
-					
-					sample *= eqFilterVolume;
-					eqFilterVolume += eqFilterVolumeDelta;`;
+                    sampleL *= eqFilterVolume;
+                    sampleR *= eqFilterVolume;
+                    eqFilterVolume += eqFilterVolumeDelta;`;
                 if (usesPanning) {
                     effectsSource += `
-					
-					panningDelayLine[panningDelayPos] = sample;
-					const panningRatioL  = panningOffsetL % 1;
-					const panningRatioR  = panningOffsetR % 1;
-					const panningTapLA   = panningDelayLine[(panningOffsetL) & panningMask];
-					const panningTapLB   = panningDelayLine[(panningOffsetL + 1) & panningMask];
-					const panningTapRA   = panningDelayLine[(panningOffsetR) & panningMask];
-					const panningTapRB   = panningDelayLine[(panningOffsetR + 1) & panningMask];
-					const panningTapL    = panningTapLA + (panningTapLB - panningTapLA) * panningRatioL;
-					const panningTapR    = panningTapRA + (panningTapRB - panningTapRA) * panningRatioR;
-					let sampleL = panningTapL * panningVolumeL;
-					let sampleR = panningTapR * panningVolumeR;
-					panningDelayPos = (panningDelayPos + 1) & panningMask;
-					panningVolumeL += panningVolumeDeltaL;
-					panningVolumeR += panningVolumeDeltaR;
-					panningOffsetL += panningOffsetDeltaL;
-					panningOffsetR += panningOffsetDeltaR;`;
-                }
-                else {
-                    effectsSource += `
-					
-					let sampleL = sample;
-					let sampleR = sample;`;
+
+                    panningDelayLineL[panningDelayPos] = sampleL;
+                    panningDelayLineR[panningDelayPos] = sampleR;
+                    const panningRatioL  = panningOffsetL - (panningOffsetL | 0);;
+                    const panningRatioR  = panningOffsetR - (panningOffsetR | 0);;
+                    const panningTapLA   = panningDelayLineL[(panningOffsetL) & panningMask];
+                    const panningTapLB   = panningDelayLineL[(panningOffsetL + 1) & panningMask];
+                    const panningTapRA   = panningDelayLineR[(panningOffsetR) & panningMask];
+                    const panningTapRB   = panningDelayLineR[(panningOffsetR + 1) & panningMask];
+                    const panningTapL    = panningTapLA + (panningTapLB - panningTapLA) * panningRatioL;
+                    const panningTapR    = panningTapRA + (panningTapRB - panningTapRA) * panningRatioR;
+
+                    sampleL = panningTapL * panningVolumeL;
+                    sampleR = panningTapR * panningVolumeR;
+                    panningDelayPos = (panningDelayPos + 1) & panningMask;
+                    panningVolumeL += panningVolumeDeltaL;
+                    panningVolumeR += panningVolumeDeltaR;
+                    panningOffsetL += panningOffsetDeltaL;
+                    panningOffsetR += panningOffsetDeltaR;`;
                 }
                 if (usesChorus) {
                     effectsSource += `
@@ -22476,10 +22573,9 @@ li.select2-results__option[role=group] > strong:hover {
 					reverb += reverbDelta;`;
                 }
                 effectsSource += `
-					
-					outputDataL[sampleIndex] += sampleL * mixVolume;
-					outputDataR[sampleIndex] += sampleR * mixVolume;
-					mixVolume += mixVolumeDelta;`;
+                outputDataL[sampleIndex] += sampleL * mixVolume;
+                outputDataR[sampleIndex] += sampleR * mixVolume;
+                mixVolume += mixVolumeDelta;`;
                 if (usesDelays) {
                     effectsSource += `
 					
@@ -22504,25 +22600,39 @@ li.select2-results__option[role=group] > strong:hover {
 				instrumentState.distortion = distortion;
 				instrumentState.distortionDrive = distortionDrive;
 				
-				if (!Number.isFinite(distortionFractionalInput1) || Math.abs(distortionFractionalInput1) < epsilon) distortionFractionalInput1 = 0.0;
-				if (!Number.isFinite(distortionFractionalInput2) || Math.abs(distortionFractionalInput2) < epsilon) distortionFractionalInput2 = 0.0;
-				if (!Number.isFinite(distortionFractionalInput3) || Math.abs(distortionFractionalInput3) < epsilon) distortionFractionalInput3 = 0.0;
-				if (!Number.isFinite(distortionPrevInput) || Math.abs(distortionPrevInput) < epsilon) distortionPrevInput = 0.0;
-				if (!Number.isFinite(distortionNextOutput) || Math.abs(distortionNextOutput) < epsilon) distortionNextOutput = 0.0;
+				if (!Number.isFinite(distortionFractionalInputL1) || Math.abs(distortionFractionalInputL1) < epsilon) distortionFractionalInputL1 = 0.0;
+				if (!Number.isFinite(distortionFractionalInputL2) || Math.abs(distortionFractionalInputL2) < epsilon) distortionFractionalInputL2 = 0.0;
+                if (!Number.isFinite(distortionFractionalInputL3) || Math.abs(distortionFractionalInputL3) < epsilon) distortionFractionalInputL3 = 0.0;
+                if (!Number.isFinite(distortionFractionalInputR1) || Math.abs(distortionFractionalInputR1) < epsilon) distortionFractionalInputR1 = 0.0;
+                if (!Number.isFinite(distortionFractionalInputR2) || Math.abs(distortionFractionalInputR2) < epsilon) distortionFractionalInputR2 = 0.0;
+                if (!Number.isFinite(distortionFractionalInputR3) || Math.abs(distortionFractionalInputR3) < epsilon) distortionFractionalInputR3 = 0.0;
+                if (!Number.isFinite(distortionPrevInputL) || Math.abs(distortionPrevInputL) < epsilon) distortionPrevInputL = 0.0;
+                if (!Number.isFinite(distortionPrevInputR) || Math.abs(distortionPrevInputR) < epsilon) distortionPrevInputR = 0.0;
+                if (!Number.isFinite(distortionNextOutputL) || Math.abs(distortionNextOutputL) < epsilon) distortionNextOutputL = 0.0;
+                if (!Number.isFinite(distortionNextOutputR) || Math.abs(distortionNextOutputR) < epsilon) distortionNextOutputR = 0.0;
 				
-				instrumentState.distortionFractionalInput1 = distortionFractionalInput1;
-				instrumentState.distortionFractionalInput2 = distortionFractionalInput2;
-				instrumentState.distortionFractionalInput3 = distortionFractionalInput3;
-				instrumentState.distortionPrevInput = distortionPrevInput;
-				instrumentState.distortionNextOutput = distortionNextOutput;`;
+				instrumentState.distortionFractionalInputL1 = distortionFractionalInputL1;
+				instrumentState.distortionFractionalInputL2 = distortionFractionalInputL2;
+                instrumentState.distortionFractionalInputL3 = distortionFractionalInputL3;
+                instrumentState.distortionFractionalInputR1 = distortionFractionalInputR1;
+                instrumentState.distortionFractionalInputR2 = distortionFractionalInputR2;
+                instrumentState.distortionFractionalInputR3 = distortionFractionalInputR3;
+                instrumentState.distortionPrevInputL = distortionPrevInputL;
+                instrumentState.distortionPrevInputR = distortionPrevInputR;
+                instrumentState.distortionNextOutputL = distortionNextOutputL;
+                instrumentState.distortionNextOutputR = distortionNextOutputR;`;
                 }
                 if (usesBitcrusher) {
                     effectsSource += `
 					
-				if (Math.abs(bitcrusherPrevInput) < epsilon) bitcrusherPrevInput = 0.0;
-				if (Math.abs(bitcrusherCurrentOutput) < epsilon) bitcrusherCurrentOutput = 0.0;
-				instrumentState.bitcrusherPrevInput = bitcrusherPrevInput;
-				instrumentState.bitcrusherCurrentOutput = bitcrusherCurrentOutput;
+				if (Math.abs(bitcrusherPrevInputL) < epsilon) bitcrusherPrevInputL = 0.0;
+                if (Math.abs(bitcrusherPrevInputR) < epsilon) bitcrusherPrevInputR = 0.0;
+                if (Math.abs(bitcrusherCurrentOutputL) < epsilon) bitcrusherCurrentOutputL = 0.0;
+                if (Math.abs(bitcrusherCurrentOutputR) < epsilon) bitcrusherCurrentOutputR = 0.0;
+                instrumentState.bitcrusherPrevInputL = bitcrusherPrevInputL;
+                instrumentState.bitcrusherPrevInputR = bitcrusherPrevInputR;
+                instrumentState.bitcrusherCurrentOutputL = bitcrusherCurrentOutputL;
+                instrumentState.bitcrusherCurrentOutputR = bitcrusherCurrentOutputR;
 				instrumentState.bitcrusherPhase = bitcrusherPhase;
 				instrumentState.bitcrusherPhaseDelta = bitcrusherPhaseDelta;
 				instrumentState.bitcrusherScale = bitcrusherScale;
@@ -22531,22 +22641,30 @@ li.select2-results__option[role=group] > strong:hover {
                 if (usesEqFilter) {
                     effectsSource += `
 					
-				synth.sanitizeFilters(filters);
+				synth.sanitizeFilters(filtersL);
+				synth.sanitizeFilters(filtersR);
 				// The filter input here is downstream from another filter so we
 				// better make sure it's safe too.
-				if (!(initialFilterInput1 < 100) || !(initialFilterInput2 < 100)) {
-					initialFilterInput1 = 0.0;
-					initialFilterInput2 = 0.0;
-				}
-				if (Math.abs(initialFilterInput1) < epsilon) initialFilterInput1 = 0.0;
-				if (Math.abs(initialFilterInput2) < epsilon) initialFilterInput2 = 0.0;
-				instrumentState.initialEqFilterInput1 = initialFilterInput1;
-				instrumentState.initialEqFilterInput2 = initialFilterInput2;`;
+				if (!(initialFilterInputL1 < 100) || !(initialFilterInputL2 < 100) || !(initialFilterInputR1 < 100) || !(initialFilterInputR2 < 100)) {
+					initialFilterInputL1 = 0.0;
+                    initialFilterInputR2 = 0.0;
+                    initialFilterInputL1 = 0.0;
+                    initialFilterInputR2 = 0.0;
+ 				}
+				if (Math.abs(initialFilterInputL1) < epsilon) initialFilterInputL1 = 0.0;
+                if (Math.abs(initialFilterInputL2) < epsilon) initialFilterInputL2 = 0.0;
+                if (Math.abs(initialFilterInputR1) < epsilon) initialFilterInputR1 = 0.0;
+                if (Math.abs(initialFilterInputR2) < epsilon) initialFilterInputR2 = 0.0;
+				instrumentState.initialEqFilterInputL1 = initialFilterInputL1;
+                instrumentState.initialEqFilterInputL2 = initialFilterInputL2;
+                instrumentState.initialEqFilterInputR1 = initialFilterInputR1;
+                instrumentState.initialEqFilterInputR2 = initialFilterInputR2;`;
                 }
                 if (usesPanning) {
                     effectsSource += `
 				
-				Synth.sanitizeDelayLine(panningDelayLine, panningDelayPos, panningMask);
+                Synth.sanitizeDelayLine(panningDelayLineL, panningDelayPos, panningMask);
+                Synth.sanitizeDelayLine(panningDelayLineR, panningDelayPos, panningMask);
 				instrumentState.panningDelayPos = panningDelayPos;
 				instrumentState.panningVolumeL = panningVolumeL;
 				instrumentState.panningVolumeR = panningVolumeR;
@@ -22615,7 +22733,8 @@ li.select2-results__option[role=group] > strong:hover {
             effectsFunction(synth, outputDataL, outputDataR, bufferIndex, runLength, instrumentState);
         }
         static pulseWidthSynth(synth, bufferIndex, roundedSamplesPerTick, tone, instrumentState) {
-            const data = synth.tempMonoInstrumentSampleBuffer;
+            const dataL = synth.tempInstrumentSampleBufferL;
+            const dataR = synth.tempInstrumentSampleBufferR;
             const unisonSign = tone.specialIntervalExpressionMult * instrumentState.unisonSign;
             if (instrumentState.unisonVoices == 1 && instrumentState.unisonSpread == 0 && !instrumentState.chord.customInterval)
                 tone.phases[1] = tone.phases[0];
@@ -22687,7 +22806,8 @@ li.select2-results__option[role=group] > strong:hover {
                 pulseWidth += pulseWidthDelta;
                 const output = sample * expression;
                 expression += expressionDelta;
-                data[sampleIndex] += output;
+                dataL[sampleIndex] += output * 0.5;
+                dataR[sampleIndex] += output * 0.5;
             }
             tone.phases[0] = phaseA;
             tone.phases[1] = phaseB;
@@ -22700,7 +22820,8 @@ li.select2-results__option[role=group] > strong:hover {
             tone.initialNoteFilterInput2 = initialFilterInput2;
         }
         static supersawSynth(synth, bufferIndex, runLength, tone, instrumentState) {
-            const data = synth.tempMonoInstrumentSampleBuffer;
+            const dataL = synth.tempInstrumentSampleBufferL;
+            const dataR = synth.tempInstrumentSampleBufferR;
             const voiceCount = Config.supersawVoiceCount | 0;
             let phaseDelta = tone.phaseDeltas[0];
             const phaseDeltaScale = +tone.phaseDeltaScales[0];
@@ -22773,7 +22894,8 @@ li.select2-results__option[role=group] > strong:hover {
                 delayLength += delayLengthDelta;
                 const output = sample * expression;
                 expression += expressionDelta;
-                data[sampleIndex] += output;
+                dataL[sampleIndex] += output * 0.5;
+                dataR[sampleIndex] += output * 0.5;
             }
             tone.phaseDeltas[0] = phaseDelta;
             tone.expression = expression;
@@ -22786,7 +22908,8 @@ li.select2-results__option[role=group] > strong:hover {
             tone.initialNoteFilterInput2 = initialFilterInput2;
         }
         static noiseSynth(synth, bufferIndex, runLength, tone, instrumentState) {
-            const data = synth.tempMonoInstrumentSampleBuffer;
+            const dataL = synth.tempInstrumentSampleBufferL;
+            const dataR = synth.tempInstrumentSampleBufferR;
             const wave = instrumentState.wave;
             const unisonSign = tone.specialIntervalExpressionMult * instrumentState.unisonSign;
             if (instrumentState.unisonVoices == 1 && instrumentState.unisonSpread == 0 && !instrumentState.chord.customInterval)
@@ -22833,7 +22956,8 @@ li.select2-results__option[role=group] > strong:hover {
                 phaseDeltaB *= phaseDeltaScaleB;
                 const output = sample * expression;
                 expression += expressionDelta;
-                data[sampleIndex] += output;
+                dataL[sampleIndex] += output * 0.5;
+                dataR[sampleIndex] += output * 0.5;
             }
             tone.phases[0] = phaseA / Config.chipNoiseLength;
             tone.phases[1] = phaseB / Config.chipNoiseLength;
@@ -22847,7 +22971,8 @@ li.select2-results__option[role=group] > strong:hover {
             tone.initialNoteFilterInput2 = initialFilterInput2;
         }
         static spectrumSynth(synth, bufferIndex, runLength, tone, instrumentState) {
-            const data = synth.tempMonoInstrumentSampleBuffer;
+            const dataL = synth.tempInstrumentSampleBufferL;
+            const dataR = synth.tempInstrumentSampleBufferR;
             const wave = instrumentState.wave;
             const samplesInPeriod = (1 << 7);
             const unisonSign = tone.specialIntervalExpressionMult * instrumentState.unisonSign;
@@ -22903,7 +23028,8 @@ li.select2-results__option[role=group] > strong:hover {
                 phaseDeltaB *= phaseDeltaScaleB;
                 const output = sample * expression;
                 expression += expressionDelta;
-                data[sampleIndex] += output;
+                dataL[sampleIndex] += output * 0.5;
+                dataR[sampleIndex] += output * 0.5;
             }
             tone.phases[0] = phaseA / Config.spectrumNoiseLength;
             tone.phases[1] = phaseB / Config.spectrumNoiseLength;
@@ -22917,7 +23043,8 @@ li.select2-results__option[role=group] > strong:hover {
             tone.initialNoteFilterInput2 = initialFilterInput2;
         }
         static drumsetSynth(synth, bufferIndex, runLength, tone, instrumentState) {
-            const data = synth.tempMonoInstrumentSampleBuffer;
+            const dataL = synth.tempInstrumentSampleBufferL;
+            const dataR = synth.tempInstrumentSampleBufferR;
             let wave = instrumentState.getDrumsetWave(tone.drumsetPitch);
             const referenceDelta = InstrumentState.drumsetIndexReferenceDelta(tone.drumsetPitch);
             let phaseDelta = tone.phaseDeltas[0] / referenceDelta;
@@ -22948,7 +23075,8 @@ li.select2-results__option[role=group] > strong:hover {
                 phaseDelta *= phaseDeltaScale;
                 const output = sample * expression;
                 expression += expressionDelta;
-                data[sampleIndex] += output;
+                dataL[sampleIndex] += output * 0.5;
+                dataR[sampleIndex] += output * 0.5;
             }
             tone.phases[0] = phase / Config.spectrumNoiseLength;
             tone.phaseDeltas[0] = phaseDelta * referenceDelta;
