@@ -13000,8 +13000,16 @@ var beepbox = (function (exports) {
             let prevWaveIntegralA = 0;
             let prevWaveIntegralB = 0;
             if (!aliases) {
-                prevWaveIntegralA = Synth.interpolateChipwave(phaseA, wave);
-                prevWaveIntegralB = Synth.interpolateChipwave(phaseB, wave);
+                const phaseAInt = Math.floor(phaseA);
+                const phaseBInt = Math.floor(phaseB);
+                const indexA = Synth.wrap(phaseAInt, waveLength);
+                const indexB = Synth.wrap(phaseBInt, waveLength);
+                const phaseRatioA = phaseA - phaseAInt;
+                const phaseRatioB = phaseB - phaseBInt;
+                prevWaveIntegralA = +wave[indexA];
+                prevWaveIntegralB = +wave[indexB];
+                prevWaveIntegralA += (wave[Synth.wrap(indexA + 1, waveLength)] - prevWaveIntegralA) * phaseRatioA;
+                prevWaveIntegralB += (wave[Synth.wrap(indexB + 1, waveLength)] - prevWaveIntegralB) * phaseRatioB;
             }
             const filters = tone.noteFilters;
             const filterCount = tone.noteFilterCount | 0;
@@ -13178,8 +13186,16 @@ var beepbox = (function (exports) {
                     }
                 }
                 else {
-                    let nextWaveIntegralA = Synth.interpolateChipwave(phaseA, wave);
-                    let nextWaveIntegralB = Synth.interpolateChipwave(phaseB, wave);
+                    const phaseAInt = Math.floor(phaseA);
+                    const phaseBInt = Math.floor(phaseB);
+                    const indexA = Synth.wrap(phaseAInt, waveLength);
+                    const indexB = Synth.wrap(phaseBInt, waveLength);
+                    let nextWaveIntegralA = wave[indexA];
+                    let nextWaveIntegralB = wave[indexB];
+                    const phaseRatioA = phaseA - phaseAInt;
+                    const phaseRatioB = phaseB - phaseBInt;
+                    nextWaveIntegralA += (wave[Synth.wrap(indexA + 1, waveLength)] - nextWaveIntegralA) * phaseRatioA;
+                    nextWaveIntegralB += (wave[Synth.wrap(indexB + 1, waveLength)] - nextWaveIntegralB) * phaseRatioB;
                     if (!(chipWaveLoopMode === 0 && chipWaveLoopStart === 0 && chipWaveLoopEnd === waveLength) && wrapped !== 0) {
                         let pwia = 0;
                         let pwib = 0;
@@ -13308,8 +13324,23 @@ var beepbox = (function (exports) {
                     const dataR = synth.tempInstrumentSampleBufferR;
                     const stopIndex = bufferIndex + roundedSamplesPerTick;
                     for (let sampleIndex = bufferIndex; sampleIndex < stopIndex; sampleIndex++) {
-                        let inputSample = 0;
-                        inputSample = Synth.interpolateSample(phase, currSample, canLoop, loopEnd, loopStart);
+                        let index = phase | 0;
+                        let nextIndex = index + 1;
+                        const fraction = phase - index;
+                        const loopLength = loopEnd - loopStart;
+                        let a = 0;
+                        let b = 0;
+                        if (canLoop) {
+                            index = (index < loopEnd) ? index : loopStart + ((index - loopStart) % loopLength);
+                            nextIndex = (nextIndex < loopEnd) ? nextIndex : loopStart + ((nextIndex - loopStart) % loopLength);
+                            a = currSample[index];
+                            b = currSample[nextIndex];
+                        }
+                        else {
+                            a = (index < currSample.length) ? currSample[index] : 0;
+                            b = (nextIndex < currSample.length) ? currSample[nextIndex] : a;
+                        }
+                        const inputSample = a + (b - a) * fraction;
                         const sample = applyFilters(inputSample * volumeScale, initialFilterInput1, initialFilterInput2, filterCount, filters);
                         const output = sample * layerExpression * attenuationScale;
                         dataL[sampleIndex] += output * Math.cos((panAmt / 500 + 1) * Math.PI * 0.25) * Math.SQRT2;
@@ -13354,8 +13385,16 @@ var beepbox = (function (exports) {
             let prevWaveIntegralA = 0;
             let prevWaveIntegralB = 0;
             if (!aliases) {
-                prevWaveIntegralA = Synth.interpolateChipwave(phaseA, wave);
-                prevWaveIntegralB = Synth.interpolateChipwave(phaseB, wave);
+                const phaseAInt = phaseA | 0;
+                const phaseBInt = phaseB | 0;
+                const indexA = phaseAInt % waveLength;
+                const indexB = phaseBInt % waveLength;
+                const phaseRatioA = phaseA - phaseAInt;
+                const phaseRatioB = phaseB - phaseBInt;
+                prevWaveIntegralA = +wave[indexA];
+                prevWaveIntegralB = +wave[indexB];
+                prevWaveIntegralA += (wave[indexA + 1] - prevWaveIntegralA) * phaseRatioA;
+                prevWaveIntegralB += (wave[indexB + 1] - prevWaveIntegralB) * phaseRatioB;
             }
             const stopIndex = bufferIndex + roundedSamplesPerTick;
             for (let sampleIndex = bufferIndex; sampleIndex < stopIndex; sampleIndex++) {
@@ -13370,8 +13409,16 @@ var beepbox = (function (exports) {
                     inputSample = waveA + waveB;
                 }
                 else {
-                    let nextWaveIntegralA = Synth.interpolateSample(phaseA, wave, true, waveLength);
-                    let nextWaveIntegralB = Synth.interpolateSample(phaseB, wave, true, waveLength);
+                    const phaseAInt = phaseA | 0;
+                    const phaseBInt = phaseB | 0;
+                    const indexA = phaseAInt % waveLength;
+                    const indexB = phaseBInt % waveLength;
+                    let nextWaveIntegralA = wave[indexA];
+                    let nextWaveIntegralB = wave[indexB];
+                    const phaseRatioA = phaseA - phaseAInt;
+                    const phaseRatioB = phaseB - phaseBInt;
+                    nextWaveIntegralA += (wave[indexA + 1] - nextWaveIntegralA) * phaseRatioA;
+                    nextWaveIntegralB += (wave[indexB + 1] - nextWaveIntegralB) * phaseRatioB;
                     waveA = (nextWaveIntegralA - prevWaveIntegralA) / phaseDeltaA;
                     waveB = (nextWaveIntegralB - prevWaveIntegralB) / phaseDeltaB;
                     prevWaveIntegralA = nextWaveIntegralA;
@@ -13432,8 +13479,16 @@ var beepbox = (function (exports) {
             for (let sampleIndex = bufferIndex; sampleIndex < stopIndex; sampleIndex++) {
                 phaseA += phaseDeltaA;
                 phaseB += phaseDeltaB;
-                let nextWaveIntegralA = Synth.interpolateChipwave(phaseA, wave);
-                let nextWaveIntegralB = Synth.interpolateChipwave(phaseB, wave);
+                const phaseAInt = phaseA | 0;
+                const phaseBInt = phaseB | 0;
+                const indexA = phaseAInt % waveLength;
+                const indexB = phaseBInt % waveLength;
+                let nextWaveIntegralA = wave[indexA];
+                let nextWaveIntegralB = wave[indexB];
+                const phaseRatioA = phaseA - phaseAInt;
+                const phaseRatioB = phaseB - phaseBInt;
+                nextWaveIntegralA += (wave[indexA + 1] - nextWaveIntegralA) * phaseRatioA;
+                nextWaveIntegralB += (wave[indexB + 1] - nextWaveIntegralB) * phaseRatioB;
                 const waveA = (nextWaveIntegralA - prevWaveIntegralA) / phaseDeltaA;
                 const waveB = (nextWaveIntegralB - prevWaveIntegralB) / phaseDeltaB;
                 prevWaveIntegralA = nextWaveIntegralA;
@@ -14837,32 +14892,6 @@ var beepbox = (function (exports) {
     Synth.fm6SynthFunctionCache = {};
     Synth.effectsFunctionCache = Array(1 << 7).fill(undefined);
     Synth.pickedStringFunctionCache = Array(3).fill(undefined);
-    Synth.interpolateSample = (phase, sample, canLoop = false, loopEnd = 0, loopStart = 0) => {
-        let index = Math.floor(phase);
-        let nextIndex = index + 1;
-        const fraction = phase - index;
-        const loopLength = loopEnd - loopStart;
-        let a = 0;
-        let b = 0;
-        if (canLoop) {
-            index = (index < loopEnd) ? index : loopStart + ((index - loopStart) % loopLength);
-            nextIndex = (nextIndex < loopEnd) ? nextIndex : loopStart + ((nextIndex - loopStart) % loopLength);
-            a = sample[index];
-            b = sample[nextIndex];
-        }
-        else {
-            a = (index < loopEnd) ? sample[index] : 0;
-            b = (nextIndex < loopEnd) ? sample[nextIndex] : a;
-        }
-        return a + (b - a) * fraction;
-    };
-    Synth.interpolateChipwave = (phase, sample) => {
-        const waveLength = sample.length;
-        const index = Math.floor(phase % waveLength);
-        const nextIndex = (index + 1) % waveLength;
-        const fraction = (phase % waveLength) - (index);
-        return sample[index] + (sample[nextIndex] - sample[index]) * fraction;
-    };
     Synth.fmSourceTemplate = (`
 		const dataL = synth.tempInstrumentSampleBufferL;
         const dataR = synth.tempInstrumentSampleBufferR;
