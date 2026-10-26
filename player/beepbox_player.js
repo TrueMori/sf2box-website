@@ -120,33 +120,6 @@ var beepbox = (function (exports) {
             });
         });
     }
-    function startLoadingSoundfont(url, chipWaveIndex) {
-        return __awaiter$1(this, void 0, void 0, function* () {
-            if (OFFLINE) {
-                if (url.slice(0, 5) === "file:") {
-                    const dirname = yield getDirname();
-                    const joined = yield pathJoin(dirname, url.slice(5));
-                    url = joined;
-                }
-            }
-            fetch(url).then((response) => {
-                if (!response.ok) {
-                    sampleLoadingState.statusTable[chipWaveIndex] = 2;
-                    return Promise.reject(new Error("Couldn't load soundfont"));
-                }
-                return response.arrayBuffer();
-            }).then(() => {
-                sampleLoadingState.samplesLoaded++;
-                sampleLoadingState.statusTable[chipWaveIndex] = 1;
-                sampleLoadEvents.dispatchEvent(new SampleLoadedEvent(sampleLoadingState.totalSamples, sampleLoadingState.samplesLoaded, sampleLoadingState.samplesFailed));
-            }).catch((error) => {
-                sampleLoadingState.statusTable[chipWaveIndex] = 2;
-                sampleLoadingState.samplesFailed++;
-                sampleLoadEvents.dispatchEvent(new SampleLoadedEvent(sampleLoadingState.totalSamples, sampleLoadingState.samplesLoaded, sampleLoadingState.samplesFailed));
-                console.log("Failed to load " + url + ":\n" + error);
-            });
-        });
-    }
     function loadScript(url) {
         const result = new Promise((resolve, reject) => {
             if (window["HTML_OFFLINE"] === true) {
@@ -8915,14 +8888,25 @@ var beepbox = (function (exports) {
                 }];
             return new Soundfont("Loading...", presets, [], [], [], [], "", false);
         }
-        static loadSoundfont(url, sfIndex, doc) {
+        static loadSoundfont(url, sfIndex, chipWaveIndex) {
             return __awaiter(this, void 0, void 0, function* () {
+                if (OFFLINE)
+                    if (OFFLINE) {
+                        if (url.slice(0, 5) === "file:") {
+                            const dirname = yield getDirname();
+                            const joined = yield pathJoin(dirname, url.slice(5));
+                            url = joined;
+                        }
+                    }
                 return fetch(url).then((response) => {
                     if (!response.ok) {
-                        return Promise.reject(new Error("Couldn't load sf2."));
+                        sampleLoadingState.statusTable[chipWaveIndex] = 2;
+                        return Promise.reject(new Error("Couldn't load soundfont"));
                     }
                     return response.arrayBuffer();
                 }).then((arrayBuffer) => {
+                    sampleLoadingState.samplesLoaded++;
+                    sampleLoadingState.statusTable[chipWaveIndex] = 0;
                     let name = "";
                     let presets = [];
                     let buffer = new Uint8Array(arrayBuffer);
@@ -9107,7 +9091,10 @@ var beepbox = (function (exports) {
                                 currByte += 8 + size + (size % 2);
                                 break;
                             default:
-                                return Promise.reject("Bad SF2 file.");
+                                sampleLoadingState.statusTable[chipWaveIndex] = 2;
+                                sampleLoadingState.samplesFailed++;
+                                sampleLoadEvents.dispatchEvent(new SampleLoadedEvent(sampleLoadingState.totalSamples, sampleLoadingState.samplesLoaded, sampleLoadingState.samplesFailed));
+                                console.log("Failed to load " + url + ":\n" + "Bad soundfont file.");
                         }
                     }
                     const presetList = phdr.slice();
@@ -9182,7 +9169,10 @@ var beepbox = (function (exports) {
                     }
                     const success = new Soundfont(name, presets, chipWaves, rawChipWaves, rawRawChipWaves, sampleInfo, url, true);
                     this.loadedSoundfonts[sfIndex] = success;
-                    doc.notifier.changed();
+                    console.log("Loading successful!: ", success);
+                    sampleLoadingState.samplesLoaded++;
+                    sampleLoadingState.statusTable[chipWaveIndex] = 1;
+                    sampleLoadEvents.dispatchEvent(new SampleLoadedEvent(sampleLoadingState.totalSamples, sampleLoadingState.samplesLoaded, sampleLoadingState.samplesFailed));
                     return success;
                 });
             });
@@ -14855,8 +14845,10 @@ var beepbox = (function (exports) {
                     sampleLoadingState.totalSamples++;
                 }
                 else {
-                    Soundfont.soundfontURLS.push(url);
-                    startLoadingSoundfont(urlSliced, chipWaveIndex);
+                    const sfIndex = Soundfont.loadedSoundfonts.length;
+                    Soundfont.soundfontURLS.push(urlSliced);
+                    Soundfont.loadedSoundfonts[sfIndex] = Soundfont.placeholderSoundfont();
+                    Soundfont.loadSoundfont(urlSliced, sfIndex, chipWaveIndex);
                     sampleLoadingState.statusTable[chipWaveIndex] = 0;
                     sampleLoadingState.urlTable[chipWaveIndex] = urlSliced;
                     sampleLoadingState.totalSamples++;
