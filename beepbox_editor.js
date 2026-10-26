@@ -11190,6 +11190,8 @@ li.select2-results__option[role=group] > strong:hover {
         static getGeneratorsOfLevelsFromMidiPitch(soundfontIndex, presetIndex, pitch) {
             const generators = [];
             const sf = Soundfont.loadedSoundfonts[soundfontIndex];
+            if (!sf)
+                return [];
             const preset = sf.presets[presetIndex];
             const globalPresetGens = new Map();
             if (!preset) {
