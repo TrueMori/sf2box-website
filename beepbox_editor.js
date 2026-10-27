@@ -14419,7 +14419,9 @@ li.select2-results__option[role=group] > strong:hover {
             const maxApplyArgs = 64000;
             let customSamplesStr = "";
             if (EditorConfig.customSamples != undefined && EditorConfig.customSamples.length > 0) {
-                customSamplesStr = "|" + EditorConfig.customSamples.join("|");
+                for (const encodedUrl of EditorConfig.customSamples) {
+                    customSamplesStr += "|" + encodeURIComponent(encodedUrl);
+                }
             }
             if (buffer.length < maxApplyArgs) {
                 return String.fromCharCode.apply(null, buffer) + customSamplesStr;
@@ -14514,7 +14516,6 @@ li.select2-results__option[role=group] > strong:hover {
             const forceSimpleFilter = (fromBeepBox && beforeNine || fromJummBox && beforeFive);
             let willLoadLegacySamplesForOldSongs = false;
             if (fromUltraBox || fromGoldBox) {
-                console.log(compressed);
                 compressed = compressed.replaceAll("%7C", "|");
                 var compressed_array = compressed.split("|");
                 compressed = compressed_array.shift();
@@ -14531,8 +14532,8 @@ li.select2-results__option[role=group] > strong:hover {
                     sampleLoadingState.samplesLoaded = 0;
                     sampleLoadingState.samplesFailed = 0;
                     sampleLoadEvents.dispatchEvent(new SampleLoadedEvent(sampleLoadingState.totalSamples, sampleLoadingState.samplesLoaded, sampleLoadingState.samplesFailed));
-                    for (const url of compressed_array) {
-                        console.log(url);
+                    for (const encodedUrl of compressed_array) {
+                        const url = decodeURIComponent(encodedUrl);
                         if (url.toLowerCase() === bundledSamplePacks.legacy) {
                             if (!willLoadLegacySamples) {
                                 willLoadLegacySamples = true;
@@ -14556,7 +14557,6 @@ li.select2-results__option[role=group] > strong:hover {
                         }
                         else {
                             const parseOldSyntax = beforeThree;
-                            console.log(customSampleUrls);
                             const ok = Song._parseAndConfigureCustomSample(url, customSampleUrls, customSamplePresets, sampleLoadingState, parseOldSyntax);
                             if (!ok) {
                                 continue;
@@ -16610,8 +16610,6 @@ li.select2-results__option[role=group] > strong:hover {
                 }
             }
             if (parsedUrl != null) {
-                console.log(parsedUrl);
-                console.log(urlSliced);
                 if (!urlSliced.includes("sf2")) {
                     let urlWithNamedOptions = urlSliced;
                     const namedOptions = [];
