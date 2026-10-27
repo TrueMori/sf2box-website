@@ -6035,7 +6035,7 @@ var beepbox = (function (exports) {
                 compressed = compressed.replaceAll("%7C", "|");
                 var compressed_array = compressed.split("|");
                 compressed = compressed_array.shift();
-                if (EditorConfig.customSamples == null || EditorConfig.customSamples.join(", ") != compressed_array.join(", ")) {
+                if (EditorConfig.customSamples == null && compressed_array.length > 0) {
                     Song._restoreChipWaveListToDefault();
                     let willLoadLegacySamples = false;
                     let willLoadNintariboxSamples = false;
@@ -7997,6 +7997,7 @@ var beepbox = (function (exports) {
             const customSampleUrlIndex = customSampleUrls.length;
             customSampleUrls.push(url);
             const chipWaveIndex = Config.chipWaves.length;
+            const sfIndex = Soundfont.loadedSoundfonts.length;
             let urlSliced = url;
             let customSampleRate = 44100;
             let isCustomPercussive = false;
@@ -8232,7 +8233,6 @@ var beepbox = (function (exports) {
                     sampleLoadingState.totalSamples++;
                 }
                 else {
-                    const sfIndex = Soundfont.loadedSoundfonts.length;
                     Soundfont.loadedSoundfonts[sfIndex] = Soundfont.placeholderSoundfont();
                     Soundfont.loadSoundfont(urlSliced, sfIndex, chipWaveIndex);
                     sampleLoadingState.statusTable[chipWaveIndex] = 0;

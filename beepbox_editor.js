@@ -14519,7 +14519,7 @@ li.select2-results__option[role=group] > strong:hover {
                 compressed = compressed.replaceAll("%7C", "|");
                 var compressed_array = compressed.split("|");
                 compressed = compressed_array.shift();
-                if (EditorConfig.customSamples == null || EditorConfig.customSamples.join(", ") != compressed_array.join(", ")) {
+                if (EditorConfig.customSamples == null && compressed_array.length > 0) {
                     Song._restoreChipWaveListToDefault();
                     let willLoadLegacySamples = false;
                     let willLoadNintariboxSamples = false;
@@ -16481,6 +16481,7 @@ li.select2-results__option[role=group] > strong:hover {
             const customSampleUrlIndex = customSampleUrls.length;
             customSampleUrls.push(url);
             const chipWaveIndex = Config.chipWaves.length;
+            const sfIndex = Soundfont.loadedSoundfonts.length;
             let urlSliced = url;
             let customSampleRate = 44100;
             let isCustomPercussive = false;
@@ -16716,7 +16717,6 @@ li.select2-results__option[role=group] > strong:hover {
                     sampleLoadingState.totalSamples++;
                 }
                 else {
-                    const sfIndex = Soundfont.loadedSoundfonts.length;
                     Soundfont.loadedSoundfonts[sfIndex] = Soundfont.placeholderSoundfont();
                     Soundfont.loadSoundfont(urlSliced, sfIndex, chipWaveIndex);
                     sampleLoadingState.statusTable[chipWaveIndex] = 0;
@@ -42722,7 +42722,6 @@ You should be redirected to the song at:<br /><br />
                         this._soundfontRow.style.display = "";
                         this._soundfontPresetRow.style.display = "";
                         this._soundfontDropdown.replaceChildren();
-                        console.log(Soundfont.loadedSoundfonts);
                         for (let i = 0; i < Soundfont.loadedSoundfonts.length; i++) {
                             this._soundfontDropdown.appendChild(option({ value: i }, Soundfont.loadedSoundfonts[i].name));
                         }
