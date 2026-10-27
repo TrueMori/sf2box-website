@@ -6030,6 +6030,7 @@ var beepbox = (function (exports) {
             const forceSimpleFilter = (fromBeepBox && beforeNine || fromJummBox && beforeFive);
             let willLoadLegacySamplesForOldSongs = false;
             if (fromUltraBox || fromGoldBox) {
+                console.log(compressed);
                 compressed = compressed.replaceAll("%7C", "|");
                 var compressed_array = compressed.split("|");
                 compressed = compressed_array.shift();
@@ -6047,6 +6048,7 @@ var beepbox = (function (exports) {
                     sampleLoadingState.samplesFailed = 0;
                     sampleLoadEvents.dispatchEvent(new SampleLoadedEvent(sampleLoadingState.totalSamples, sampleLoadingState.samplesLoaded, sampleLoadingState.samplesFailed));
                     for (const url of compressed_array) {
+                        console.log(url);
                         if (url.toLowerCase() === bundledSamplePacks.legacy) {
                             if (!willLoadLegacySamples) {
                                 willLoadLegacySamples = true;
@@ -6070,6 +6072,7 @@ var beepbox = (function (exports) {
                         }
                         else {
                             const parseOldSyntax = beforeThree;
+                            console.log(customSampleUrls);
                             const ok = Song._parseAndConfigureCustomSample(url, customSampleUrls, customSamplePresets, sampleLoadingState, parseOldSyntax);
                             if (!ok) {
                                 continue;
@@ -8123,6 +8126,8 @@ var beepbox = (function (exports) {
                 }
             }
             if (parsedUrl != null) {
+                console.log(parsedUrl);
+                console.log(urlSliced);
                 if (!urlSliced.includes("sf2")) {
                     let urlWithNamedOptions = urlSliced;
                     const namedOptions = [];
@@ -8230,7 +8235,6 @@ var beepbox = (function (exports) {
                 }
                 else {
                     const sfIndex = Soundfont.loadedSoundfonts.length;
-                    Soundfont.soundfontURLS.push(urlSliced);
                     Soundfont.loadedSoundfonts[sfIndex] = Soundfont.placeholderSoundfont();
                     Soundfont.loadSoundfont(urlSliced, sfIndex, chipWaveIndex);
                     sampleLoadingState.statusTable[chipWaveIndex] = 0;
